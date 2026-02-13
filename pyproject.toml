@@ -35,6 +35,12 @@ server = [
     "psycopg2-binary>=2.9",
     "minio>=7.2",
 ]
+# Cloud sync (for hybrid mode)
+sync = [
+    "requests>=2.31",
+    "boto3>=1.34",
+    "tenacity>=8.2",
+]
 # Development + testing
 dev = [
     "pytest>=8.0",
