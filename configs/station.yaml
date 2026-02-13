@@ -1,0 +1,99 @@
+# IntelFactor.ai — Station Configuration
+# Copy this file to /opt/intelfactor/config/station.yaml and customize.
+
+# ── Deployment Mode ────────────────────────────────────────────────────
+# station_only: all inference + RCA runs on this device
+# station_plus_hub: realtime on station, heavy analysis on site hub
+mode: station_only
+
+# ── Station Identity ───────────────────────────────────────────────────
+station_id: station_1
+factory_id: wiko_yangjiang_main
+
+# ── Paths ──────────────────────────────────────────────────────────────
+data_dir: /opt/intelfactor/data
+model_dir: /opt/intelfactor/models
+edge_yaml_path: /opt/intelfactor/config/edge.yaml
+
+# ── Vision Inference ───────────────────────────────────────────────────
+# Leave blank for auto-detection based on hardware.
+# Options: yolov8n_trt, yolov8s_trt, yolo26_trt
+vision_model: ~
+confidence_threshold: 0.5
+nms_threshold: 0.45
+defect_classes:
+  - scratch_surface
+  - scratch_deep
+  - chip_edge
+  - chip_blade
+  - dent
+  - discoloration
+  - burr
+  - misalignment
+  - rust_spot
+  - grind_mark
+  - polish_defect
+  - handle_gap
+  - stamp_error
+
+# ── Language Model (RCA) ──────────────────────────────────────────────
+# Leave blank for auto-detection.
+# Options: qwen25_3b_int4, phi3_mini_int4, qwen25_7b_int4,
+#          qwen25_7b_vllm, qwen25_20b_vllm
+language_model: ~
+temperature: 0.3
+
+# ── RCA Pipeline ──────────────────────────────────────────────────────
+rca:
+  anomaly_check_interval_sec: 300    # 5 minutes
+  z_score_threshold: 2.5
+  min_events_for_baseline: 20
+  window_hours: 4.0
+
+# ── Site Hub (station_plus_hub mode only) ─────────────────────────────
+hub:
+  url: http://hub.local:8080
+  language_model: ~                  # auto-detect (biggest available)
+  review_queue_enabled: true
+  cross_line_rca_enabled: true
+
+# ── Process Parameters (override from edge.yaml) ─────────────────────
+# These are normally loaded from the SOP compiler output in edge.yaml.
+# Manual overrides here take precedence.
+process_parameters:
+  grinding_rpm:
+    unit: RPM
+    target: 3000
+    tolerance: 50
+    data_source: mqtt              # mqtt | manual | opcua
+    mqtt_topic: station_1/grinding/rpm
+  grinding_temp:
+    unit: "°C"
+    target: 45
+    tolerance: 5
+    data_source: manual
+  polishing_pressure:
+    unit: bar
+    target: 2.5
+    tolerance: 0.3
+    data_source: manual
+
+# ── SOP Mapping ──────────────────────────────────────────────────────
+sop_map:
+  parameter_sops:
+    grinding_rpm: "SOP 4.2.3"
+    grinding_temp: "SOP 4.2.5"
+    polishing_pressure: "SOP 5.1.2"
+  defect_sops:
+    scratch_surface: "SOP 4.2.3"
+    scratch_deep: "SOP 4.2.4"
+    chip_edge: "SOP 3.1.1"
+    chip_blade: "SOP 3.1.2"
+    discoloration: "SOP 6.3.1"
+  default_section: "SOP (refer to quality manual)"
+
+# ── Monitoring ───────────────────────────────────────────────────────
+monitoring:
+  prometheus_port: 9090
+  health_check_port: 8081
+  log_level: INFO

@@ -1,0 +1,43 @@
+[Unit]
+Description=IntelFactor Station - Edge Inspection + RCA
+After=network-online.target
+Wants=network-online.target
+# Camera and GPU should be available
+After=nvidia-persistenced.service
+
+[Service]
+Type=simple
+User=intelfactor
+Group=intelfactor
+WorkingDirectory=/opt/intelfactor
+Environment=PYTHONUNBUFFERED=1
+Environment=CUDA_VISIBLE_DEVICES=0
+
+ExecStart=/opt/intelfactor/venv/bin/intelfactor-station \
+    --config /opt/intelfactor/config/station.yaml \
+    --port 8080
+
+# Restart policy: always restart, but back off to avoid thrashing
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=10
+
+# Resource limits
+LimitNOFILE=65536
+LimitMEMLOCK=infinity
+MemoryMax=7G
+
+# Security
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/intelfactor/data
+ReadOnlyPaths=/opt/intelfactor/config /opt/intelfactor/models
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=intelfactor-station
+
+[Install]
+WantedBy=multi-user.target

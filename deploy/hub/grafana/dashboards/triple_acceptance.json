@@ -1,0 +1,81 @@
+{
+  "dashboard": {
+    "title": "IntelFactor — Triple Acceptance Rate",
+    "uid": "intelfactor-triples",
+    "tags": ["intelfactor", "triples", "rca"],
+    "timezone": "browser",
+    "refresh": "1m",
+    "time": { "from": "now-7d", "to": "now" },
+    "panels": [
+      {
+        "title": "Triple Status Over Time",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+        "datasource": { "type": "postgres" },
+        "targets": [
+          {
+            "rawSql": "SELECT date_trunc('day', timestamp) AS time, status, COUNT(*) AS count FROM causal_triples WHERE timestamp >= $__timeFrom() GROUP BY 1, 2 ORDER BY 1",
+            "format": "time_series"
+          }
+        ],
+        "fieldConfig": { "defaults": { "unit": "short", "custom": { "lineWidth": 2, "fillOpacity": 20, "stacking": { "mode": "normal" } } } }
+      },
+      {
+        "title": "Acceptance Rate by Defect Type",
+        "type": "bargauge",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+        "datasource": { "type": "postgres" },
+        "targets": [
+          {
+            "rawSql": "SELECT defect_type, ROUND(100.0 * SUM(CASE WHEN status='verified' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0), 1) AS acceptance_pct FROM causal_triples WHERE timestamp >= $__timeFrom() GROUP BY defect_type HAVING COUNT(*) >= 3 ORDER BY acceptance_pct DESC",
+            "format": "table"
+          }
+        ],
+        "fieldConfig": { "defaults": { "unit": "percent", "max": 100, "thresholds": { "steps": [{"value": 0, "color": "red"}, {"value": 50, "color": "yellow"}, {"value": 75, "color": "green"}] } } }
+      },
+      {
+        "title": "Operator Response Breakdown",
+        "type": "piechart",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+        "datasource": { "type": "postgres" },
+        "targets": [
+          {
+            "rawSql": "SELECT operator_action AS action, COUNT(*) AS count FROM causal_triples WHERE timestamp >= $__timeFrom() AND operator_action != 'pending' GROUP BY operator_action",
+            "format": "table"
+          }
+        ]
+      },
+      {
+        "title": "Total Triples",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 0, "y": 16 },
+        "datasource": { "type": "postgres" },
+        "targets": [{ "rawSql": "SELECT COUNT(*) FROM causal_triples", "format": "table" }]
+      },
+      {
+        "title": "Verified",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 6, "y": 16 },
+        "datasource": { "type": "postgres" },
+        "targets": [{ "rawSql": "SELECT COUNT(*) FROM causal_triples WHERE status='verified'", "format": "table" }],
+        "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "green" } } }
+      },
+      {
+        "title": "Disputed",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 12, "y": 16 },
+        "datasource": { "type": "postgres" },
+        "targets": [{ "rawSql": "SELECT COUNT(*) FROM causal_triples WHERE status='disputed'", "format": "table" }],
+        "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "red" } } }
+      },
+      {
+        "title": "Avg Confidence (Verified)",
+        "type": "gauge",
+        "gridPos": { "h": 4, "w": 6, "x": 18, "y": 16 },
+        "datasource": { "type": "postgres" },
+        "targets": [{ "rawSql": "SELECT ROUND(AVG(cause_confidence)::numeric, 2) FROM causal_triples WHERE status='verified'", "format": "table" }],
+        "fieldConfig": { "defaults": { "min": 0, "max": 1, "thresholds": { "steps": [{"value": 0, "color": "red"}, {"value": 0.5, "color": "yellow"}, {"value": 0.7, "color": "green"}] } } }
+      }
+    ]
+  }
+}

@@ -1,0 +1,110 @@
+# IntelFactor.ai — Hybrid Deployment
+# Edge box runs inference locally, syncs summaries + evidence to cloud/hub.
+#
+# Usage:
+#   cd deploy/hybrid
+#   docker compose up -d
+#
+# Local Dashboard: http://<edge-ip>:8080
+# Cloud Dashboard: https://app.intelfactor.ai (configured separately)
+
+services:
+
+  # ── Station Runtime (Inference + Local Storage) ──────────────────
+  station:
+    build:
+      context: ../..
+      dockerfile: deploy/edge-only/Dockerfile
+    container_name: intelfactor-station
+    restart: unless-stopped
+    runtime: nvidia
+    environment:
+      # Local storage (edge keeps running if cloud dies)
+      STORAGE_MODE: local
+      SQLITE_DB_PATH: /data/local.db
+      EVIDENCE_DIR: /data/evidence
+
+      # Station config
+      STATION_ID: ${STATION_ID:-station_01}
+      CAMERA_URI: ${CAMERA_URI:-/dev/video0}
+
+      # Local API server
+      API_HOST: 0.0.0.0
+      API_PORT: 8080
+
+      # Cloud sync config
+      CLOUD_API_URL: ${CLOUD_API_URL:-https://api.intelfactor.ai}
+      CLOUD_API_KEY: ${CLOUD_API_KEY:-}
+      SYNC_ENABLED: "true"
+      SYNC_INTERVAL_SEC: ${SYNC_INTERVAL_SEC:-300}
+
+      # S3 for evidence upload (optional)
+      S3_BUCKET: ${S3_BUCKET:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_REGION: ${AWS_REGION:-us-west-2}
+
+      # Model paths
+      VISION_MODEL_PATH: /models/vision
+      LLM_MODEL_PATH: /models/llm
+      EVIDENCE_MAX_GB: ${EVIDENCE_MAX_GB:-50}
+
+    volumes:
+      - station_data:/data
+      - ${MODELS_DIR:-/opt/intelfactor/models}:/models:ro
+      - /dev:/dev
+
+    ports:
+      - "8080:8080"
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ── Cloud Sync Agent ─────────────────────────────────────────────
+  sync-agent:
+    build:
+      context: ../..
+      dockerfile: deploy/hybrid/Dockerfile.sync
+    container_name: intelfactor-sync-agent
+    restart: unless-stopped
+    environment:
+      STATION_ID: ${STATION_ID:-station_01}
+      SQLITE_DB_PATH: /data/local.db
+      EVIDENCE_DIR: /data/evidence
+
+      # Cloud API
+      CLOUD_API_URL: ${CLOUD_API_URL:-https://api.intelfactor.ai}
+      CLOUD_API_KEY: ${CLOUD_API_KEY:-}
+
+      # Sync settings
+      SYNC_INTERVAL_SEC: ${SYNC_INTERVAL_SEC:-300}
+      SYNC_BATCH_SIZE: ${SYNC_BATCH_SIZE:-100}
+
+      # S3 for evidence upload
+      S3_BUCKET: ${S3_BUCKET:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_REGION: ${AWS_REGION:-us-west-2}
+
+    volumes:
+      - station_data:/data:ro  # Read-only access to station data
+
+    depends_on:
+      station:
+        condition: service_healthy
+
+volumes:
+  station_data:
+    driver: local

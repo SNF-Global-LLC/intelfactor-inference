@@ -1,0 +1,82 @@
+{
+  "dashboard": {
+    "title": "IntelFactor — System Health",
+    "uid": "intelfactor-health",
+    "tags": ["intelfactor", "health", "ops"],
+    "timezone": "browser",
+    "refresh": "15s",
+    "time": { "from": "now-6h", "to": "now" },
+    "panels": [
+      {
+        "title": "Station Status",
+        "type": "table",
+        "gridPos": { "h": 6, "w": 24, "x": 0, "y": 0 },
+        "datasource": { "type": "prometheus" },
+        "targets": [
+          {
+            "expr": "up{job=\"intelfactor-stations\"}",
+            "legendFormat": "{{instance}}",
+            "instant": true
+          }
+        ],
+        "fieldConfig": {
+          "overrides": [
+            { "matcher": {"id": "byName", "options": "Value"}, "properties": [{"id": "mappings", "value": [{"type": "value", "options": {"0": {"text": "DOWN", "color": "red"}, "1": {"text": "UP", "color": "green"}}}]}] }
+          ]
+        }
+      },
+      {
+        "title": "Events Synced to Hub (24h)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+        "datasource": { "type": "postgres" },
+        "targets": [
+          {
+            "rawSql": "SELECT date_trunc('hour', synced_at) AS time, station_id, COUNT(*) AS synced FROM defect_events WHERE synced_at >= $__timeFrom() AND synced_at IS NOT NULL GROUP BY 1, 2 ORDER BY 1",
+            "format": "time_series"
+          }
+        ]
+      },
+      {
+        "title": "Sync Lag (Latest Event vs Latest Sync)",
+        "type": "table",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+        "datasource": { "type": "postgres" },
+        "targets": [
+          {
+            "rawSql": "SELECT station_id, MAX(timestamp) AS latest_event, MAX(synced_at) AS latest_sync, EXTRACT(EPOCH FROM (NOW() - MAX(synced_at)))::int AS sync_lag_sec FROM defect_events WHERE synced_at IS NOT NULL GROUP BY station_id ORDER BY sync_lag_sec DESC",
+            "format": "table"
+          }
+        ]
+      },
+      {
+        "title": "Hub Postgres Size",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 0, "y": 14 },
+        "datasource": { "type": "postgres" },
+        "targets": [{ "rawSql": "SELECT pg_size_pretty(pg_database_size(current_database()))", "format": "table" }]
+      },
+      {
+        "title": "Total Events (Hub)",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 6, "y": 14 },
+        "datasource": { "type": "postgres" },
+        "targets": [{ "rawSql": "SELECT COUNT(*) FROM defect_events", "format": "table" }]
+      },
+      {
+        "title": "Total Triples (Hub)",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 12, "y": 14 },
+        "datasource": { "type": "postgres" },
+        "targets": [{ "rawSql": "SELECT COUNT(*) FROM causal_triples", "format": "table" }]
+      },
+      {
+        "title": "Unique Stations",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 18, "y": 14 },
+        "datasource": { "type": "postgres" },
+        "targets": [{ "rawSql": "SELECT COUNT(DISTINCT station_id) FROM defect_events", "format": "table" }]
+      }
+    ]
+  }
+}

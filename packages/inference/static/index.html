@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IntelFactor 质检面板</title>
+<style>
+  :root {
+    --pass: #2e7d32; --fail: #c62828; --review: #ef6c00;
+    --bg: #f5f5f5; --card: #ffffff; --text: #212121; --muted: #757575;
+    --border: #e0e0e0; --accent: #1565c0; --danger-bg: #ffebee;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); font-size: 15px; }
+
+  /* ── Header ── */
+  .header { background: #1b2a4a; color: white; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
+  .header h1 { font-size: 18px; font-weight: 600; }
+  .header .status { display: flex; gap: 16px; font-size: 13px; align-items: center; }
+  .header .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .dot-green { background: #4caf50; }
+  .dot-red { background: #f44336; }
+  .lang-btn { background: rgba(255,255,255,0.15); border: none; color: white; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+
+  /* ── Grid ── */
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px; max-width: 1400px; margin: 0 auto; }
+  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border-radius: 8px; border: 1px solid var(--border); overflow: hidden; }
+  .card-title { padding: 12px 16px; font-weight: 600; font-size: 14px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .card-body { padding: 12px 16px; }
+  .full-width { grid-column: 1 / -1; }
+
+  /* ── Stats Row ── */
+  .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; padding: 16px; max-width: 1400px; margin: 0 auto; }
+  .stat { background: var(--card); border-radius: 8px; border: 1px solid var(--border); padding: 16px; text-align: center; }
+  .stat-value { font-size: 28px; font-weight: 700; line-height: 1.2; }
+  .stat-label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  /* ── Verdict badges ── */
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 4px; font-size: 12px; font-weight: 700; color: white; }
+  .badge-PASS { background: var(--pass); }
+  .badge-FAIL { background: var(--fail); }
+  .badge-REVIEW { background: var(--review); }
+
+  /* ── Event list ── */
+  .event-list { max-height: 400px; overflow-y: auto; }
+  .event-row { display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid #f0f0f0; gap: 12px; cursor: pointer; }
+  .event-row:hover { background: #f5f8ff; }
+  .event-time { font-size: 12px; color: var(--muted); min-width: 70px; }
+  .event-type { font-size: 13px; flex: 1; }
+  .event-conf { font-size: 12px; color: var(--muted); }
+
+  /* ── Alert banner ── */
+  .alert-banner { background: var(--danger-bg); border: 1px solid #ef9a9a; border-radius: 8px; padding: 14px 16px; margin-bottom: 12px; }
+  .alert-banner h3 { color: var(--fail); font-size: 14px; margin-bottom: 6px; }
+  .alert-banner p { font-size: 13px; }
+
+  /* ── Recommendation card ── */
+  .rec-card { border: 2px solid var(--accent); border-radius: 8px; padding: 14px; margin-bottom: 12px; }
+  .rec-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+  .rec-defect { font-weight: 600; font-size: 15px; }
+  .rec-sop { font-size: 12px; color: var(--accent); background: #e3f2fd; padding: 2px 8px; border-radius: 3px; }
+  .rec-explanation { font-size: 14px; line-height: 1.6; margin: 8px 0; padding: 10px; background: #fafafa; border-radius: 6px; }
+  .rec-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .btn { padding: 8px 20px; border-radius: 6px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .btn-accept { background: var(--pass); color: white; }
+  .btn-reject { background: var(--fail); color: white; }
+  .btn-accept:hover { background: #1b5e20; }
+  .btn-reject:hover { background: #b71c1c; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ── Evidence modal ── */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 200; align-items: center; justify-content: center; }
+  .modal-overlay.active { display: flex; }
+  .modal { background: white; border-radius: 12px; max-width: 90vw; max-height: 90vh; overflow: auto; padding: 20px; }
+  .modal img { max-width: 100%; border-radius: 8px; }
+  .modal-close { float: right; background: none; border: none; font-size: 24px; cursor: pointer; color: var(--muted); }
+
+  /* ── Drift indicators ── */
+  .drift-ok { color: var(--pass); }
+  .drift-warn { color: var(--review); }
+  .drift-bad { color: var(--fail); }
+
+  .loading { text-align: center; padding: 40px; color: var(--muted); }
+  .empty { text-align: center; padding: 20px; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <h1>🔍 IntelFactor 质检面板</h1>
+  <div class="status">
+    <span><span class="dot dot-green" id="statusDot"></span> <span id="statusText">连接中...</span></span>
+    <span id="fpsDisplay">-- FPS</span>
+    <span id="tripleCount">-- 因果三元组</span>
+    <button class="lang-btn" onclick="toggleLang()"><span id="langLabel">EN</span></button>
+  </div>
+</div>
+
+<!-- Stats -->
+<div class="stats-row">
+  <div class="stat">
+    <div class="stat-value" id="statTotal" style="color:var(--accent)">--</div>
+    <div class="stat-label" data-zh="今日检测" data-en="Today's Inspections">今日检测</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value" id="statPass" style="color:var(--pass)">--</div>
+    <div class="stat-label" data-zh="合格" data-en="Pass">合格</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value" id="statFail" style="color:var(--fail)">--</div>
+    <div class="stat-label" data-zh="不合格" data-en="Fail">不合格</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value" id="statReview" style="color:var(--review)">--</div>
+    <div class="stat-label" data-zh="待复检" data-en="Review">待复检</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value" id="statTriples" style="color:#7b1fa2">--</div>
+    <div class="stat-label" data-zh="已验证三元组" data-en="Verified Triples">已验证三元组</div>
+  </div>
+</div>
+
+<!-- Main Grid -->
+<div class="grid">
+
+  <!-- Alerts -->
+  <div class="card full-width" id="alertsCard" style="display:none">
+    <div class="card-title" style="background:var(--danger-bg);color:var(--fail)">
+      <span data-zh="⚠️ 异常警报" data-en="⚠️ Anomaly Alerts">⚠️ 异常警报</span>
+    </div>
+    <div class="card-body" id="alertsList"></div>
+  </div>
+
+  <!-- Recommendations -->
+  <div class="card">
+    <div class="card-title">
+      <span data-zh="📋 待处理建议" data-en="📋 Pending Recommendations">📋 待处理建议</span>
+      <span class="badge" id="recCount" style="background:var(--accent)">0</span>
+    </div>
+    <div class="card-body" id="recList">
+      <div class="empty" data-zh="暂无待处理建议" data-en="No pending recommendations">暂无待处理建议</div>
+    </div>
+  </div>
+
+  <!-- Recent Events -->
+  <div class="card">
+    <div class="card-title">
+      <span data-zh="📊 最近检测事件" data-en="📊 Recent Events">📊 最近检测事件</span>
+    </div>
+    <div class="card-body event-list" id="eventList">
+      <div class="loading" data-zh="加载中..." data-en="Loading...">加载中...</div>
+    </div>
+  </div>
+
+  <!-- System Status -->
+  <div class="card">
+    <div class="card-title">
+      <span data-zh="🖥️ 系统状态" data-en="🖥️ System Status">🖥️ 系统状态</span>
+    </div>
+    <div class="card-body" id="systemStatus">
+      <div class="loading">加载中...</div>
+    </div>
+  </div>
+
+  <!-- Drift Monitor -->
+  <div class="card">
+    <div class="card-title">
+      <span data-zh="📈 参数漂移监控" data-en="📈 Parameter Drift">📈 参数漂移监控</span>
+    </div>
+    <div class="card-body" id="driftStatus">
+      <div class="empty" data-zh="暂无漂移数据" data-en="No drift data">暂无漂移数据</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Evidence Modal -->
+<div class="modal-overlay" id="evidenceModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal()">&times;</button>
+    <h3 id="modalTitle">--</h3>
+    <img id="modalImg" src="" alt="Evidence frame">
+    <div id="modalMeta" style="margin-top:12px;font-size:13px;color:var(--muted)"></div>
+  </div>
+</div>
+
+<script>
+let lang = 'zh';
+const REFRESH_MS = 5000;
+
+// ── Language Toggle ──
+function toggleLang() {
+  lang = lang === 'zh' ? 'en' : 'zh';
+  document.getElementById('langLabel').textContent = lang === 'zh' ? 'EN' : '中文';
+  document.querySelectorAll('[data-zh]').forEach(el => {
+    el.textContent = el.getAttribute(`data-${lang}`);
+  });
+}
+
+// ── API Fetch ──
+async function api(path) {
+  try {
+    const r = await fetch(path);
+    if (!r.ok) throw new Error(r.status);
+    return await r.json();
+  } catch (e) {
+    console.warn(`API ${path}:`, e);
+    return null;
+  }
+}
+
+// ── Time Format ──
+function fmtTime(ts) {
+  if (!ts) return '--';
+  const d = new Date(ts);
+  if (isNaN(d)) {
+    // ISO string without timezone
+    const parts = ts.split('T');
+    if (parts.length === 2) return parts[1].substring(0, 8);
+    return ts.substring(11, 19);
+  }
+  return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+// ── Defect Name ──
+const DEFECT_NAMES = {
+  scratch_surface: { zh: '表面刮痕', en: 'Surface Scratch' },
+  scratch_edge: { zh: '刀刃刮痕', en: 'Edge Scratch' },
+  burr: { zh: '毛刺', en: 'Burr' },
+  pit_corrosion: { zh: '点蚀', en: 'Pit Corrosion' },
+  discoloration: { zh: '变色', en: 'Discoloration' },
+  dent: { zh: '凹痕', en: 'Dent' },
+  crack: { zh: '裂纹', en: 'Crack' },
+  warp: { zh: '翘曲', en: 'Warp' },
+  handle_gap: { zh: '刀柄间隙', en: 'Handle Gap' },
+  handle_crack: { zh: '刀柄裂纹', en: 'Handle Crack' },
+  logo_defect: { zh: '商标缺陷', en: 'Logo Defect' },
+  dimension_out_of_spec: { zh: '尺寸超差', en: 'Out of Spec' },
+  foreign_material: { zh: '异物', en: 'Foreign Material' },
+};
+function defectName(type) {
+  const d = DEFECT_NAMES[type];
+  return d ? d[lang] : type;
+}
+
+// ── Update Functions ──
+
+async function updateStatus() {
+  const data = await api('/api/status');
+  if (!data) {
+    document.getElementById('statusDot').className = 'dot dot-red';
+    document.getElementById('statusText').textContent = lang === 'zh' ? '离线' : 'Offline';
+    return;
+  }
+  document.getElementById('statusDot').className = 'dot dot-green';
+  document.getElementById('statusText').textContent = lang === 'zh' ? '运行中' : 'Running';
+
+  const cam = data.camera || {};
+  document.getElementById('fpsDisplay').textContent = `${cam.fps_actual || '--'} FPS`;
+
+  const pipe = data.pipeline || {};
+  const tStats = pipe.recommender || {};
+  document.getElementById('tripleCount').textContent =
+    `${tStats.total_triples || 0} ${lang === 'zh' ? '三元组' : 'triples'}`;
+
+  // System status card
+  const el = document.getElementById('systemStatus');
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">
+      <div><b>${lang === 'zh' ? '工位' : 'Station'}:</b> ${data.station_id || '--'}</div>
+      <div><b>${lang === 'zh' ? '模式' : 'Mode'}:</b> ${data.mode || '--'}</div>
+      <div><b>${lang === 'zh' ? '相机FPS' : 'Camera FPS'}:</b> ${cam.fps_actual || '--'}</div>
+      <div><b>${lang === 'zh' ? '已捕获' : 'Captured'}:</b> ${cam.frames_captured || '--'}</div>
+      <div><b>${lang === 'zh' ? '已丢弃' : 'Dropped'}:</b> ${cam.frames_dropped || 0}</div>
+      <div><b>${lang === 'zh' ? '重连次数' : 'Reconnects'}:</b> ${cam.reconnects || 0}</div>
+      <div><b>${lang === 'zh' ? '待复检队列' : 'Review Queue'}:</b> ${data.review_queue_depth || 0}</div>
+      <div><b>${lang === 'zh' ? '累计事件' : 'Total Events'}:</b> ${(pipe.accumulator || {}).total_events || 0}</div>
+    </div>
+  `;
+}
+
+async function updateEvents() {
+  const data = await api('/api/events?limit=25');
+  if (!data || !data.events) return;
+
+  const el = document.getElementById('eventList');
+  if (data.events.length === 0) {
+    el.innerHTML = `<div class="empty">${lang === 'zh' ? '暂无事件' : 'No events yet'}</div>`;
+    return;
+  }
+
+  el.innerHTML = data.events.map(e => `
+    <div class="event-row" onclick="showEvidence('${e.event_id}')">
+      <span class="event-time">${fmtTime(e.timestamp)}</span>
+      <span class="badge badge-FAIL">FAIL</span>
+      <span class="event-type">${defectName(e.defect_type)}</span>
+      <span class="event-conf">${(e.confidence * 100).toFixed(0)}%</span>
+    </div>
+  `).join('');
+
+  // Update stats (approximate — events table only has FAIL/REVIEW)
+  document.getElementById('statFail').textContent = data.count || 0;
+}
+
+async function updateAlerts() {
+  const data = await api('/api/alerts');
+  if (!data || !data.alerts || data.alerts.length === 0) {
+    document.getElementById('alertsCard').style.display = 'none';
+    return;
+  }
+  document.getElementById('alertsCard').style.display = 'block';
+  const el = document.getElementById('alertsList');
+  el.innerHTML = data.alerts.map(a => `
+    <div class="alert-banner">
+      <h3>${defectName(a.defect_type)} ${lang === 'zh' ? '异常率上升' : 'rate spike'}</h3>
+      <p>${lang === 'zh' ? '当前' : 'Current'}: ${a.current_rate?.toFixed(1) || '--'}/hr
+         → ${lang === 'zh' ? '基线' : 'Baseline'}: ${a.baseline_rate?.toFixed(1) || '--'}/hr
+         (z=${a.z_score?.toFixed(1) || '--'})</p>
+    </div>
+  `).join('');
+}
+
+async function updateRecommendations() {
+  const data = await api('/api/recommendations');
+  if (!data || !data.recommendations) return;
+
+  const recs = data.recommendations;
+  document.getElementById('recCount').textContent = recs.length;
+  const el = document.getElementById('recList');
+
+  if (recs.length === 0) {
+    el.innerHTML = `<div class="empty">${lang === 'zh' ? '暂无待处理建议' : 'No pending recommendations'}</div>`;
+    return;
+  }
+
+  el.innerHTML = recs.slice(0, 5).map(r => `
+    <div class="rec-card" id="rec-${r.triple_id}">
+      <div class="rec-header">
+        <span class="rec-defect">${defectName(r.defect_type)}</span>
+        <span class="rec-sop">${r.recommendation_id || 'SOP'}</span>
+      </div>
+      <div class="rec-explanation">
+        ${lang === 'zh' ? (r.cause_explanation_zh || r.cause_explanation_en || '--') : (r.cause_explanation_en || r.cause_explanation_zh || '--')}
+      </div>
+      <div class="rec-actions">
+        <button class="btn btn-accept" onclick="feedback('${r.triple_id}','accepted')">
+          ${lang === 'zh' ? '✓ 接受' : '✓ Accept'}
+        </button>
+        <button class="btn btn-reject" onclick="feedback('${r.triple_id}','rejected')">
+          ${lang === 'zh' ? '✗ 拒绝' : '✗ Reject'}
+        </button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function updateTripleStats() {
+  const data = await api('/api/triples/stats');
+  if (!data) return;
+  document.getElementById('statTriples').textContent = data.verified || 0;
+}
+
+async function updateDrift() {
+  const data = await api('/api/drift');
+  if (!data || !data.drifts || data.drifts.length === 0) {
+    document.getElementById('driftStatus').innerHTML =
+      `<div class="empty">${lang === 'zh' ? '所有参数正常' : 'All parameters nominal'}</div>`;
+    return;
+  }
+  const el = document.getElementById('driftStatus');
+  el.innerHTML = data.drifts.map(d => {
+    const cls = Math.abs(d.drift_pct || 0) > 5 ? 'drift-bad' : Math.abs(d.drift_pct || 0) > 2 ? 'drift-warn' : 'drift-ok';
+    return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f0f0">
+      <span>${d.parameter_name || '--'}</span>
+      <span class="${cls}" style="font-weight:600">${d.current_value?.toFixed(1) || '--'} / ${d.target_value?.toFixed(1) || '--'} (${d.drift_pct?.toFixed(1) || '0'}%)</span>
+    </div>`;
+  }).join('');
+}
+
+// ── Actions ──
+
+async function feedback(tripleId, action) {
+  const card = document.getElementById(`rec-${tripleId}`);
+  if (card) card.querySelectorAll('.btn').forEach(b => b.disabled = true);
+
+  const res = await fetch('/api/feedback', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ triple_id: tripleId, action: action, operator_id: 'operator_1' })
+  });
+
+  if (res.ok) {
+    if (card) {
+      card.style.opacity = '0.5';
+      card.style.borderColor = action === 'accepted' ? 'var(--pass)' : 'var(--fail)';
+    }
+    setTimeout(updateRecommendations, 1000);
+  }
+}
+
+async function showEvidence(eventId) {
+  document.getElementById('modalTitle').textContent = eventId;
+  document.getElementById('modalImg').src = `/api/evidence/${eventId}`;
+  document.getElementById('modalMeta').textContent = '';
+  document.getElementById('evidenceModal').classList.add('active');
+}
+
+function closeModal() {
+  document.getElementById('evidenceModal').classList.remove('active');
+}
+
+// Close modal on overlay click
+document.getElementById('evidenceModal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
+// ── Main Loop ──
+
+async function refresh() {
+  await Promise.all([
+    updateStatus(),
+    updateEvents(),
+    updateAlerts(),
+    updateRecommendations(),
+    updateTripleStats(),
+    updateDrift(),
+  ]);
+}
+
+refresh();
+setInterval(refresh, REFRESH_MS);
+</script>
+</body>
+</html>

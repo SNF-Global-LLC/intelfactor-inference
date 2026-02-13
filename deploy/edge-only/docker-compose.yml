@@ -1,0 +1,87 @@
+# IntelFactor.ai — Edge-Only Deployment
+# Runs everything on a single NVIDIA box (Jetson or GPU server).
+# No cloud dependencies. Dashboard served locally.
+#
+# Usage:
+#   cd deploy/edge-only
+#   docker compose up -d
+#
+# Dashboard: http://<edge-ip>:8080
+# API: http://<edge-ip>:8080/api/
+
+services:
+
+  # ── Station Runtime (Inference + Evidence) ───────────────────────
+  station:
+    build:
+      context: ../..
+      dockerfile: deploy/edge-only/Dockerfile
+    container_name: intelfactor-station
+    restart: unless-stopped
+    runtime: nvidia  # Enable GPU access
+    environment:
+      # Storage mode
+      STORAGE_MODE: local
+      SQLITE_DB_PATH: /data/local.db
+      EVIDENCE_DIR: /data/evidence
+
+      # Station config
+      STATION_ID: ${STATION_ID:-station_01}
+      CAMERA_URI: ${CAMERA_URI:-/dev/video0}
+
+      # API server
+      API_HOST: 0.0.0.0
+      API_PORT: 8080
+
+      # Model paths (mounted from host)
+      VISION_MODEL_PATH: /models/vision
+      LLM_MODEL_PATH: /models/llm
+
+      # Evidence retention
+      EVIDENCE_MAX_GB: ${EVIDENCE_MAX_GB:-50}
+
+    volumes:
+      # Persistent data
+      - station_data:/data
+      # Model files (mounted read-only from host)
+      - ${MODELS_DIR:-/opt/intelfactor/models}:/models:ro
+      # Camera device access
+      - /dev:/dev
+
+    ports:
+      - "8080:8080"  # Dashboard + API
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ── Nginx (optional: SSL termination + static dashboard) ─────────
+  # Uncomment if you want to serve dashboard separately with HTTPS
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: intelfactor-nginx
+  #   restart: unless-stopped
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
+  #     - ./dashboard:/usr/share/nginx/html:ro
+  #     - ./certs:/etc/nginx/certs:ro
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   depends_on:
+  #     - station
+
+volumes:
+  station_data:
+    driver: local

@@ -1,0 +1,24 @@
+# IntelFactor.ai — Prometheus Configuration
+# Scrapes station health endpoints for fleet monitoring.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Station nodes — add each station's IP here
+  - job_name: 'intelfactor-stations'
+    metrics_path: '/health'
+    scheme: 'http'
+    static_configs:
+      - targets:
+          - 'station-1.local:8080'
+          - 'station-2.local:8080'
+          - 'station-3.local:8080'
+        labels:
+          factory: 'wiko_yangjiang'
+
+  # Hub self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

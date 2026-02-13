@@ -1,0 +1,252 @@
+# IntelFactor.ai — Wiko Cutlery Defect Taxonomy
+# 13 defect types from production deployment at Wiko Cutlery (Yangjiang).
+# Used by: RCA explainer (Layer 3), Action Recommender (Layer 4), Operator UI.
+#
+# Each defect type includes:
+#   description_zh / description_en: Operator-facing description
+#   common_causes: Known root causes for RCA correlation
+#   severity_range: [min, max] for classification
+#   sop_section: Linked SOP reference for corrective action
+#   detection_zone: Where on the product this defect typically appears
+
+defects:
+  scratch_surface:
+    description_zh: "刀片表面刮痕"
+    description_en: "Surface scratch on blade body"
+    common_causes:
+      - "Grinding wheel wear or contamination"
+      - "Conveyor belt debris"
+      - "Polishing compound residue"
+      - "Handling damage during transfer"
+    severity_range: [0.2, 0.9]
+    sop_section: "SOP 4.2.3"
+    detection_zone: "blade_body"
+    process_parameters: ["grinding_rpm", "polishing_pressure", "belt_speed"]
+
+  scratch_edge:
+    description_zh: "刀刃刮痕"
+    description_en: "Scratch on cutting edge"
+    common_causes:
+      - "Sharpening stone misalignment"
+      - "Edge finishing tool wear"
+      - "Improper handling after sharpening"
+    severity_range: [0.4, 1.0]
+    sop_section: "SOP 4.3.1"
+    detection_zone: "cutting_edge"
+    process_parameters: ["sharpening_angle", "stone_grit", "finishing_speed"]
+
+  burr:
+    description_zh: "毛刺"
+    description_en: "Metal burr on edge or surface"
+    common_causes:
+      - "Stamping die wear"
+      - "Insufficient deburring pass"
+      - "Cutting tool dullness"
+    severity_range: [0.3, 0.8]
+    sop_section: "SOP 3.4.2"
+    detection_zone: "edge_perimeter"
+    process_parameters: ["die_cycles", "deburring_passes", "cutting_pressure"]
+
+  pit_corrosion:
+    description_zh: "点蚀/腐蚀斑"
+    description_en: "Pitting corrosion or rust spot"
+    common_causes:
+      - "Raw material quality (chloride content)"
+      - "Insufficient passivation"
+      - "Storage humidity above threshold"
+      - "Contamination during handling"
+    severity_range: [0.5, 1.0]
+    sop_section: "SOP 5.1.1"
+    detection_zone: "blade_body"
+    process_parameters: ["passivation_time", "storage_humidity", "rinse_ph"]
+
+  discoloration:
+    description_zh: "变色/色差"
+    description_en: "Surface discoloration or color inconsistency"
+    common_causes:
+      - "Heat treatment temperature variation"
+      - "Uneven tempering"
+      - "Chemical residue from cleaning"
+      - "Oxidation during cooling"
+    severity_range: [0.2, 0.7]
+    sop_section: "SOP 5.2.1"
+    detection_zone: "blade_body"
+    process_parameters: ["tempering_temp", "cooling_rate", "cleaning_concentration"]
+
+  dent:
+    description_zh: "凹痕"
+    description_en: "Surface dent or depression"
+    common_causes:
+      - "Impact during handling or transport"
+      - "Press alignment drift"
+      - "Fixture damage"
+    severity_range: [0.3, 0.9]
+    sop_section: "SOP 3.2.4"
+    detection_zone: "blade_body"
+    process_parameters: ["press_alignment", "fixture_condition", "handling_method"]
+
+  crack:
+    description_zh: "裂纹"
+    description_en: "Surface or edge crack"
+    common_causes:
+      - "Material stress from heat treatment"
+      - "Quenching too rapid"
+      - "Material inclusion defect"
+      - "Grinding thermal damage"
+    severity_range: [0.7, 1.0]
+    sop_section: "SOP 2.1.1"
+    detection_zone: "any"
+    process_parameters: ["quench_rate", "tempering_temp", "grinding_rpm"]
+
+  warp:
+    description_zh: "翘曲变形"
+    description_en: "Blade warping or bending"
+    common_causes:
+      - "Uneven heat treatment"
+      - "Asymmetric grinding pressure"
+      - "Residual stress from stamping"
+      - "Improper stacking during cooling"
+    severity_range: [0.4, 1.0]
+    sop_section: "SOP 3.1.2"
+    detection_zone: "full_blade"
+    process_parameters: ["tempering_temp", "grinding_pressure", "cooling_method"]
+
+  handle_gap:
+    description_zh: "刀柄间隙"
+    description_en: "Gap between handle and blade tang"
+    common_causes:
+      - "Handle molding tolerance drift"
+      - "Rivet tension insufficient"
+      - "Adhesive cure time too short"
+      - "Tang dimension out of spec"
+    severity_range: [0.3, 0.8]
+    sop_section: "SOP 6.1.3"
+    detection_zone: "handle_junction"
+    process_parameters: ["mold_temp", "rivet_torque", "cure_time"]
+
+  handle_crack:
+    description_zh: "刀柄裂纹"
+    description_en: "Crack or split in handle material"
+    common_causes:
+      - "Injection molding temperature too high"
+      - "Material drying insufficient"
+      - "Rivet over-torque"
+      - "Drop damage"
+    severity_range: [0.5, 1.0]
+    sop_section: "SOP 6.2.1"
+    detection_zone: "handle_body"
+    process_parameters: ["mold_temp", "material_moisture", "rivet_torque"]
+
+  logo_defect:
+    description_zh: "商标印刷缺陷"
+    description_en: "Logo print misalignment, smearing, or missing"
+    common_causes:
+      - "Laser marking alignment drift"
+      - "Etching depth inconsistency"
+      - "Surface preparation insufficient"
+      - "Fixture positioning error"
+    severity_range: [0.2, 0.6]
+    sop_section: "SOP 7.1.1"
+    detection_zone: "blade_flat"
+    process_parameters: ["laser_power", "marking_speed", "focus_distance"]
+
+  dimension_out_of_spec:
+    description_zh: "尺寸超差"
+    description_en: "Blade length, width, or thickness out of tolerance"
+    common_causes:
+      - "Stamping die wear"
+      - "Grinding wheel diameter decrease"
+      - "CNC program drift"
+      - "Measurement fixture calibration"
+    severity_range: [0.4, 1.0]
+    sop_section: "SOP 2.3.1"
+    detection_zone: "full_blade"
+    process_parameters: ["die_cycles", "grinding_wheel_diameter", "cnc_offset"]
+
+  foreign_material:
+    description_zh: "异物附着"
+    description_en: "Foreign material contamination on surface"
+    common_causes:
+      - "Cleaning process failure"
+      - "Environmental contamination"
+      - "Previous process residue"
+      - "Packaging material debris"
+    severity_range: [0.2, 0.7]
+    sop_section: "SOP 5.3.1"
+    detection_zone: "any"
+    process_parameters: ["cleaning_concentration", "rinse_cycles", "air_quality"]
+
+
+# SOP Section Reference (for Action Recommender Layer 4)
+sop_sections:
+  "SOP 2.1.1": "Material Inspection & Incoming QC"
+  "SOP 2.3.1": "Dimensional Verification Procedure"
+  "SOP 3.1.2": "Stamping & Forming Process Control"
+  "SOP 3.2.4": "Press Alignment & Fixture Maintenance"
+  "SOP 3.4.2": "Deburring & Edge Finishing"
+  "SOP 4.2.3": "Grinding Wheel Maintenance & Calibration"
+  "SOP 4.3.1": "Sharpening & Edge Finishing QC"
+  "SOP 5.1.1": "Corrosion Prevention & Passivation"
+  "SOP 5.2.1": "Heat Treatment Process Control"
+  "SOP 5.3.1": "Cleaning & Contamination Control"
+  "SOP 6.1.3": "Handle Assembly & Fitment"
+  "SOP 6.2.1": "Handle Material & Injection Molding"
+  "SOP 7.1.1": "Logo Marking & Branding QC"
+
+# Process Parameters (for Correlator Layer 2 / edge.yaml)
+process_parameters:
+  grinding_rpm:
+    unit: "RPM"
+    target: 3000
+    tolerance: 50
+    description_zh: "研磨转速"
+    description_en: "Grinding wheel RPM"
+
+  polishing_pressure:
+    unit: "bar"
+    target: 2.5
+    tolerance: 0.3
+    description_zh: "抛光压力"
+    description_en: "Polishing pressure"
+
+  tempering_temp:
+    unit: "°C"
+    target: 200
+    tolerance: 10
+    description_zh: "回火温度"
+    description_en: "Tempering temperature"
+
+  sharpening_angle:
+    unit: "degrees"
+    target: 15
+    tolerance: 1
+    description_zh: "磨刃角度"
+    description_en: "Sharpening angle"
+
+  rivet_torque:
+    unit: "Nm"
+    target: 8.5
+    tolerance: 0.5
+    description_zh: "铆钉扭矩"
+    description_en: "Rivet torque"
+
+  mold_temp:
+    unit: "°C"
+    target: 230
+    tolerance: 10
+    description_zh: "模具温度"
+    description_en: "Injection mold temperature"
+
+  passivation_time:
+    unit: "min"
+    target: 30
+    tolerance: 5
+    description_zh: "钝化时间"
+    description_en: "Passivation bath time"
+
+  storage_humidity:
+    unit: "%RH"
+    target: 45
+    tolerance: 10
+    description_zh: "仓储湿度"
+    description_en: "Storage humidity"

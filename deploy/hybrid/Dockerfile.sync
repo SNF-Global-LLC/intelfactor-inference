@@ -1,0 +1,22 @@
+# IntelFactor.ai — Cloud Sync Agent Dockerfile
+# Syncs local SQLite data and evidence to cloud API/S3.
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install dependencies
+RUN pip install --no-cache-dir \
+    requests \
+    boto3 \
+    tenacity
+
+# Copy sync agent code
+COPY packages/inference/sync_cloud.py ./sync_cloud.py
+
+# Environment defaults
+ENV SYNC_INTERVAL_SEC=300
+ENV SYNC_BATCH_SIZE=100
+
+# Run sync agent
+CMD ["python", "sync_cloud.py"]
