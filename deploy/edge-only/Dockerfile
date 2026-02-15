@@ -13,17 +13,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-COPY pyproject.toml ./
-RUN pip install --no-cache-dir flask opencv-python-headless numpy
+# Copy full project for pip install
+COPY . .
 
-# Copy application code
-COPY packages/ ./packages/
-COPY configs/ ./configs/
-COPY scripts/ ./scripts/
+# Install project with jetson extras (includes all real deps)
+RUN pip install --no-cache-dir ".[jetson]"
 
 # Create data directories
-RUN mkdir -p /data/evidence /data/models
+RUN mkdir -p /data/evidence /data/models /opt/intelfactor/config
+
+# Copy default config if available
+RUN cp -r configs/* /opt/intelfactor/config/ 2>/dev/null || true
 
 # Environment defaults
 ENV STORAGE_MODE=local
@@ -37,5 +37,5 @@ ENV PYTHONPATH=/app
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
-# Run the station
-CMD ["python", "-m", "packages.inference.cli", "serve", "--api-only"]
+# Run the station (calls run_station() which starts runtime + API)
+CMD ["python", "-c", "from packages.inference.cli import run_station; run_station()"]

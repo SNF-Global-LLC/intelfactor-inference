@@ -7,11 +7,13 @@ Design:
 - FIFO deletion when disk quota exceeded.
 - Metadata JSON sidecar per frame.
 - Frame paths written back into DetectionResult.frame_ref.
+- Append-only manifest.jsonl for sync agent tracking.
 - Fully local. No network. No cloud.
 """
 
 from __future__ import annotations
 
+import fcntl
 import json
 import logging
 import os
@@ -19,7 +21,7 @@ import shutil
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 import numpy as np
 
@@ -61,6 +63,9 @@ class EvidenceWriter:
 
         # Create base directory
         self.evidence_dir.mkdir(parents=True, exist_ok=True)
+
+        # Manifest file for sync agent
+        self.manifest_path = self.evidence_dir / "manifest.jsonl"
 
         # Calculate initial disk usage
         self._total_bytes = self._calculate_usage()
@@ -150,6 +155,9 @@ class EvidenceWriter:
         if self._write_count % self.check_interval == 0:
             self._enforce_quota()
 
+        # Append to manifest.jsonl for sync agent
+        self._append_manifest(event_id, meta)
+
         # Return relative path for frame_ref field
         return str(jpg_path.relative_to(self.evidence_dir))
 
@@ -222,3 +230,128 @@ class EvidenceWriter:
             "usage_pct": round(self._total_bytes / self.max_disk_bytes * 100, 1) if self.max_disk_bytes > 0 else 0,
             "date_dirs": len(date_dirs),
         }
+
+    def _append_manifest(self, event_id: str, metadata: dict[str, Any]) -> None:
+        """
+        Append an entry to manifest.jsonl for sync agent tracking.
+
+        Uses file locking to support concurrent writes.
+        """
+        entry = {
+            "event_id": event_id,
+            "timestamp": metadata.get("timestamp", datetime.now().isoformat()),
+            "frame_path": metadata.get("frame_path", ""),
+            "verdict": metadata.get("verdict", ""),
+            "synced": False,
+            "sync_timestamp": None,
+        }
+
+        try:
+            with open(self.manifest_path, "a") as f:
+                # Advisory file lock for concurrent access
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                try:
+                    f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+                finally:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+        except OSError as e:
+            logger.warning("Failed to append manifest: %s", e)
+
+    def get_unsynced_entries(self, limit: int = 100) -> list[dict[str, Any]]:
+        """
+        Read unsynced entries from manifest.jsonl.
+
+        Args:
+            limit: Maximum number of entries to return
+
+        Returns:
+            List of unsynced manifest entries
+        """
+        if not self.manifest_path.exists():
+            return []
+
+        entries = []
+        try:
+            with open(self.manifest_path, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                        if not entry.get("synced", False):
+                            entries.append(entry)
+                            if len(entries) >= limit:
+                                break
+                    except json.JSONDecodeError:
+                        continue
+        except OSError as e:
+            logger.warning("Failed to read manifest: %s", e)
+
+        return entries
+
+    def mark_synced(self, event_ids: list[str]) -> int:
+        """
+        Mark entries as synced in manifest.jsonl.
+
+        Rewrites the manifest file with updated sync status.
+        Returns the number of entries marked.
+        """
+        if not self.manifest_path.exists() or not event_ids:
+            return 0
+
+        event_id_set = set(event_ids)
+        marked = 0
+        updated_lines = []
+
+        try:
+            with open(self.manifest_path, "r") as f:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                try:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            entry = json.loads(line)
+                            if entry.get("event_id") in event_id_set and not entry.get("synced"):
+                                entry["synced"] = True
+                                entry["sync_timestamp"] = datetime.now().isoformat()
+                                marked += 1
+                            updated_lines.append(json.dumps(entry, ensure_ascii=False))
+                        except json.JSONDecodeError:
+                            updated_lines.append(line)
+                finally:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+
+            # Write back atomically
+            tmp_path = self.manifest_path.with_suffix(".tmp")
+            with open(tmp_path, "w") as f:
+                for line in updated_lines:
+                    f.write(line + "\n")
+            tmp_path.replace(self.manifest_path)
+
+            logger.info("Marked %d entries as synced", marked)
+        except OSError as e:
+            logger.warning("Failed to mark synced: %s", e)
+
+        return marked
+
+    def iter_manifest(self) -> Iterator[dict[str, Any]]:
+        """
+        Iterate over all manifest entries.
+
+        Yields:
+            Manifest entry dictionaries
+        """
+        if not self.manifest_path.exists():
+            return
+
+        with open(self.manifest_path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        yield json.loads(line)
+                    except json.JSONDecodeError:
+                        continue

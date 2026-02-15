@@ -6,101 +6,94 @@ Edge-first industrial quality inspection platform for NVIDIA devices.
 
 ## Current State (2026-02-14)
 
+### Critical Fixes Applied (California MVP)
+
+1. **Dockerfile CMD** - Fixed broken entrypoint
+   - Was: `python -m packages.inference.cli serve --api-only` (doesn't exist)
+   - Now: `python -c "from packages.inference.cli import run_station; run_station()"`
+
+2. **Dependency Installation** - Fixed missing deps
+   - Was: manual `pip install flask opencv numpy` (incomplete)
+   - Now: `pip install ".[jetson]"` (installs from pyproject.toml)
+
+3. **API Switch** - Use v2 with evidence endpoints
+   - Was: `from packages.inference.api import create_app`
+   - Now: `from packages.inference.api_v2 import create_app`
+
+4. **Sync Dockerfile** - Fixed to include full project
+   - Was: only copies sync_cloud.py (missing storage, schemas)
+   - Now: copies full project, `pip install ".[sync]"`
+
 ### Completed
 - [x] Storage abstraction layer (SQLite for local, cloud-ready interface)
 - [x] API v2 with evidence serving endpoints
 - [x] Docker Compose profiles (edge-only, hybrid)
 - [x] Cloud sync agent for hybrid mode
-- [x] Doctor script for system health checks
-- [x] 19 passing tests (storage + API)
-- [x] Technical architecture documentation
-- [x] Local mode documentation
-- [x] Cloud integration guide (app.intelfactor.ai)
-- [x] Makefile for build/deploy automation
-- [x] Deploy script (scripts/deploy.sh)
-- [x] Updated README with quick start
+- [x] Real YOLOv8 output parser (replaced stub)
+- [x] Manifest.jsonl support for evidence sync
+- [x] Model setup script (scripts/setup_models.sh)
+- [x] intelfactor-doctor CLI entry point
+- [x] **Deployment fixes for California MVP**
+- [x] **RUNBOOK_MVP.md** created
+- [x] 78 passing tests
+
+### Files Modified for Deployment Fix
+```
+deploy/edge-only/Dockerfile      # Fixed CMD, proper pip install
+deploy/hybrid/Dockerfile.sync    # Fixed to include full project
+packages/inference/cli.py        # Switched to api_v2.create_app
+docs/RUNBOOK_MVP.md              # NEW: Deployment guide
+```
+
+### Quick Deploy Commands
+
+```bash
+# Edge-only (no cloud)
+cd deploy/edge-only
+cp .env.example .env && vim .env
+docker compose up -d
+curl http://localhost:8080/health
+
+# Hybrid (with cloud sync)
+cd deploy/hybrid
+cp .env.example .env && vim .env
+docker compose up -d
+docker logs -f intelfactor-sync-agent
+```
 
 ### Repository
 - **GitHub**: https://github.com/tonesgainz/intelfactor-inference
-- **Commits**: 5
+- **Tests**: 78 passing (pytest)
 
-### Key Files Created This Session
-```
-packages/inference/storage/          # Storage abstraction layer
-├── __init__.py
-├── factory.py                       # STORAGE_MODE routing
-├── base.py                          # Abstract interfaces
-├── sqlite_base.py                   # SQLite connection + migrations
-├── sqlite_events.py                 # Event store
-├── sqlite_evidence.py               # Evidence store
-└── sqlite_triples.py                # Triple store
+### API Endpoints (v2)
 
-packages/inference/api_v2.py         # Enhanced API with evidence endpoints
-packages/inference/sync_cloud.py     # Cloud sync agent
-packages/inference/.env.example      # Environment template
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/api/events` | GET/POST | Defect events |
+| `/api/triples` | GET/PATCH | Causal triples |
+| `/api/feedback` | POST | Operator feedback |
+| `/api/v1/evidence/<id>` | GET | Evidence metadata |
+| `/api/v1/evidence/<id>/image.jpg` | GET | Evidence image |
+| `/api/v1/evidence/manifest` | GET | Evidence manifest |
 
-deploy/edge-only/                    # Edge-only deployment
-├── docker-compose.yml
-├── Dockerfile
-└── .env.example
-
-deploy/hybrid/                       # Hybrid deployment
-├── docker-compose.yml
-├── Dockerfile.sync
-└── .env.example
-
-docs/ARCHITECTURE.md                 # Technical architecture (666 lines)
-docs/LOCAL_MODE.md                   # Local deployment guide
-
-scripts/doctor.py                    # System health checks
-
-tests/test_storage.py                # Storage layer tests (9 tests)
-tests/test_api_v2.py                 # API v2 tests (10 tests)
-```
-
-### Next Steps (User's Question)
-User asked: "how would I build this and integrate with https://app.intelfactor.ai"
-
-Planned response would cover:
-1. **Build Docker images** for edge-only and hybrid modes
-2. **Configure cloud sync** with app.intelfactor.ai API
-3. **Set up authentication** (API keys, bearer tokens)
-4. **Deploy to edge device** (Jetson/GPU server)
-5. **Verify end-to-end flow**: camera → inference → evidence → cloud sync
-
-### Environment
-- Working directory: `/Users/tonyadmin/edgefirst/intelfactor-inference`
-- Python venv: `.venv` (pytest, flask, numpy installed)
-- Git remote: `origin` → `github.com:tonesgainz/intelfactor-inference.git`
-
-### Key Environment Variables
+### Environment Variables
 ```bash
-STORAGE_MODE=local|cloud
-SQLITE_DB_PATH=/opt/intelfactor/data/local.db
-EVIDENCE_DIR=/opt/intelfactor/data/evidence
+# Required
+STORAGE_MODE=local
+SQLITE_DB_PATH=/data/local.db
+EVIDENCE_DIR=/data/evidence
 STATION_ID=station_01
-API_PORT=8080
 
-# For hybrid mode:
+# For hybrid mode
 CLOUD_API_URL=https://api.intelfactor.ai
-CLOUD_API_KEY=<your_key>
+CLOUD_API_KEY=ifk_your_key
 S3_BUCKET=intelfactor-evidence
-```
-
-### Architecture Summary
-```
-Camera → Vision (TensorRT) → RCA Pipeline → Dashboard
-                                   │
-                    ┌──────────────┴──────────────┐
-                    ▼                             ▼
-              [EDGE-ONLY]                    [HYBRID]
-              SQLite + local              SQLite + cloud sync
-              No cloud deps               → app.intelfactor.ai
 ```
 
 ### Tests
 ```bash
 source .venv/bin/activate
-python -m pytest tests/test_storage.py tests/test_api_v2.py -v
-# 19 passed
+python -m pytest tests/ -v
+# 78 passed
 ```

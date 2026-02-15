@@ -5,18 +5,16 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install dependencies
-RUN pip install --no-cache-dir \
-    requests \
-    boto3 \
-    tenacity
+# Copy full project (sync agent needs storage, schemas, etc.)
+COPY . .
 
-# Copy sync agent code
-COPY packages/inference/sync_cloud.py ./sync_cloud.py
+# Install project with sync extras
+RUN pip install --no-cache-dir ".[sync]"
 
 # Environment defaults
 ENV SYNC_INTERVAL_SEC=300
 ENV SYNC_BATCH_SIZE=100
+ENV PYTHONPATH=/app
 
 # Run sync agent
-CMD ["python", "sync_cloud.py"]
+CMD ["python", "-m", "packages.inference.sync_cloud"]

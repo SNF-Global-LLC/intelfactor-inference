@@ -51,6 +51,7 @@ dev = [
 [project.scripts]
 intelfactor-station = "packages.inference.cli:run_station"
 intelfactor-hub = "packages.inference.cli:run_hub"
+intelfactor-doctor = "packages.inference.cli:run_doctor"
 
 [tool.setuptools.packages.find]
 include = ["packages*"]

@@ -115,7 +115,7 @@ def run_station():
         logger.info("Camera ingest started: %s", camera_config.source)
 
     # Start API server in background thread
-    from packages.inference.api import create_app
+    from packages.inference.api_v2 import create_app
 
     app = create_app(runtime)
 
@@ -185,9 +185,99 @@ def run_hub():
     logger.info("Hub shutdown complete")
 
 
+def run_doctor():
+    """CLI: run pre-flight diagnostics."""
+    parser = argparse.ArgumentParser(
+        description="IntelFactor System Doctor - Pre-flight diagnostics for edge deployment"
+    )
+    parser.add_argument("--full", action="store_true", help="Run full checks including camera")
+    parser.add_argument("--camera", type=str, help="Camera URI to test (overrides CAMERA_URI env)")
+    parser.add_argument("--config", default="/opt/intelfactor/config/station.yaml", help="Station config file")
+    parser.add_argument("--skip-camera", action="store_true", help="Skip camera check even with --full")
+    parser.add_argument("--json", action="store_true", help="Output as JSON")
+    args = parser.parse_args()
+
+    # Import the doctor script
+    import os
+    import json as json_module
+
+    # Set environment from config if available
+    config_path = Path(args.config)
+    if config_path.exists():
+        raw = _load_yaml(str(config_path))
+        if "camera" in raw and "source" in raw["camera"]:
+            os.environ.setdefault("CAMERA_URI", raw["camera"]["source"])
+        if "data_dir" in raw:
+            os.environ.setdefault("EVIDENCE_DIR", f"{raw['data_dir']}/evidence")
+            os.environ.setdefault("SQLITE_DB_PATH", f"{raw['data_dir']}/local.db")
+        if "model_dir" in raw:
+            os.environ.setdefault("VISION_MODEL_PATH", f"{raw['model_dir']}/vision")
+            os.environ.setdefault("LLM_MODEL_PATH", f"{raw['model_dir']}/language")
+
+    # Run doctor checks
+    from scripts.doctor import (
+        check_python,
+        check_gpu,
+        check_storage,
+        check_evidence_dir,
+        check_disk_space,
+        check_api_health,
+        check_models,
+        check_camera,
+    )
+
+    results = {}
+
+    if not args.json:
+        print("=" * 60)
+        print("IntelFactor.ai System Doctor")
+        print("=" * 60)
+        print()
+
+    results["python"] = check_python()
+    results["gpu"] = check_gpu()
+    results["storage"] = check_storage()
+    results["evidence"] = check_evidence_dir()
+    results["disk"] = check_disk_space()
+    results["api"] = check_api_health()
+    results["models"] = check_models()
+
+    # Camera check
+    if (args.full or args.camera) and not args.skip_camera:
+        camera_uri = args.camera or os.environ.get("CAMERA_URI", "/dev/video0")
+        results["camera"] = check_camera(camera_uri)
+
+    # Summary
+    passed = sum(1 for ok in results.values() if ok)
+    total = len(results)
+
+    if args.json:
+        output = {
+            "checks": results,
+            "passed": passed,
+            "total": total,
+            "ready": passed == total,
+        }
+        print(json_module.dumps(output, indent=2))
+    else:
+        print()
+        print("=" * 60)
+        print(f"Results: {passed}/{total} checks passed")
+
+        if passed == total:
+            print("System is ready for deployment.")
+        else:
+            print("Some checks failed. Review warnings above.")
+
+    sys.exit(0 if passed == total else 1)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "hub":
         sys.argv.pop(1)
         run_hub()
+    elif len(sys.argv) > 1 and sys.argv[1] == "doctor":
+        sys.argv.pop(1)
+        run_doctor()
     else:
         run_station()
