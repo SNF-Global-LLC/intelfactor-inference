@@ -4,7 +4,7 @@
 
 Edge-first industrial quality inspection platform for NVIDIA devices.
 
-## Current State (2026-02-13)
+## Current State (2026-02-14)
 
 ### Completed
 - [x] Storage abstraction layer (SQLite for local, cloud-ready interface)
@@ -15,10 +15,14 @@ Edge-first industrial quality inspection platform for NVIDIA devices.
 - [x] 19 passing tests (storage + API)
 - [x] Technical architecture documentation
 - [x] Local mode documentation
+- [x] Cloud integration guide (app.intelfactor.ai)
+- [x] Makefile for build/deploy automation
+- [x] Deploy script (scripts/deploy.sh)
+- [x] Updated README with quick start
 
 ### Repository
 - **GitHub**: https://github.com/tonesgainz/intelfactor-inference
-- **Commits**: 3 (initial + tests + architecture)
+- **Commits**: 5
 
 ### Key Files Created This Session
 ```
