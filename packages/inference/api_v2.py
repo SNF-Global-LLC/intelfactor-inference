@@ -34,6 +34,9 @@ def create_app(runtime: Any = None) -> Any:
         get_storage_mode,
     )
 
+    # Production visibility metrics
+    from packages.visibility.metrics_api import metrics_bp, init_metrics
+
     app = Flask(
         __name__,
         static_folder=os.path.join(os.path.dirname(__file__), "static"),
@@ -46,6 +49,12 @@ def create_app(runtime: Any = None) -> Any:
 
     # Get evidence directory from env
     evidence_dir = Path(os.environ.get("EVIDENCE_DIR", "/opt/intelfactor/data/evidence"))
+
+    # Initialize production metrics
+    db_path = os.environ.get("DB_PATH", "/opt/intelfactor/data/local.db")
+    station_id = os.environ.get("STATION_ID", "SNF-Vision-1")
+    metrics = init_metrics(app, db_path=db_path, station_id=station_id)
+    app.register_blueprint(metrics_bp)
 
     # ── Dashboard ───────────────────────────────────────────────────
 
@@ -118,6 +127,8 @@ def create_app(runtime: Any = None) -> Any:
         event_store = get_event_store()
         try:
             event_id = event_store.insert(data)
+            # Feed production metrics
+            metrics.on_event(data)
             return jsonify({"status": "created", "event_id": event_id}), 201
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
