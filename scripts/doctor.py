@@ -174,31 +174,94 @@ def check_api_health():
 
 
 def check_models():
-    """Check if model files exist."""
+    """
+    Check vision (.engine) and language (.gguf) model files.
+
+    For TRT engines:
+      - Confirms at least one .engine file is present
+      - Attempts to verify it loads via verify_trt_engine.py
+      - Prints exact build command when engine is missing
+    """
     vision_path = Path(os.environ.get("VISION_MODEL_PATH", "/opt/intelfactor/models/vision"))
     llm_path = Path(os.environ.get("LLM_MODEL_PATH", "/opt/intelfactor/models/llm"))
 
     all_ok = True
 
-    if vision_path.exists():
-        files = list(vision_path.glob("*.engine")) + list(vision_path.glob("*.onnx"))
-        if files:
-            print(f"[OK] Vision model: {vision_path} ({len(files)} files)")
-        else:
-            print(f"[WARN] Vision model dir exists but no .engine/.onnx files: {vision_path}")
-            all_ok = False
+    # ── Vision model ──────────────────────────────────────────────────────────
+    if not vision_path.exists():
+        print(f"[FAIL] Vision model dir not found: {vision_path}")
+        print(f"       → mkdir -p {vision_path}")
+        print(f"       → make build-trt MODEL=yolov8n.pt PRECISION=fp16")
+        all_ok = False
     else:
-        print(f"[INFO] Vision model: {vision_path} (not found)")
+        engines = list(vision_path.glob("*.engine"))
+        onnx_files = list(vision_path.glob("*.onnx"))
+        pt_files = list(vision_path.glob("*.pt"))
 
+        if engines:
+            for engine_file in engines:
+                size_mb = engine_file.stat().st_size / (1024 * 1024)
+                print(f"[OK] Vision engine: {engine_file.name} ({size_mb:.0f}MB)")
+
+            # Try verification via verify_trt_engine.py
+            verify_script = Path(__file__).parent / "verify_trt_engine.py"
+            if verify_script.exists():
+                import subprocess as _sp
+                for engine_file in engines:
+                    try:
+                        result = _sp.run(
+                            [sys.executable, str(verify_script), str(engine_file), "--json"],
+                            capture_output=True, text=True, timeout=30,
+                        )
+                        if result.returncode == 0:
+                            import json as _json
+                            data = _json.loads(result.stdout)
+                            load_ms = data.get("load_ms", "?")
+                            inf_ms = data.get("first_inference_ms", "?")
+                            print(f"[OK] Engine verified: load={load_ms}ms, inference={inf_ms}ms")
+                        elif result.returncode == 2:
+                            print(f"[INFO] TensorRT not installed — engine load test skipped")
+                        else:
+                            import json as _json
+                            try:
+                                data = _json.loads(result.stdout)
+                                err = data.get("error", result.stderr.strip())
+                            except Exception:
+                                err = result.stderr.strip() or "unknown error"
+                            print(f"[WARN] Engine load test failed: {err}")
+                            print(f"       → Rebuild: make build-trt MODEL=<source> PRECISION=fp16")
+                            all_ok = False
+                    except Exception as exc:
+                        print(f"[WARN] Could not run verify_trt_engine.py: {exc}")
+        elif onnx_files:
+            print(f"[FAIL] ONNX found ({onnx_files[0].name}) but no .engine file")
+            print(f"       → Run: make build-trt MODEL={onnx_files[0]} PRECISION=fp16")
+            print(f"       ⚠  Build MUST be run ON the target Jetson device")
+            all_ok = False
+        elif pt_files:
+            print(f"[FAIL] PyTorch .pt found ({pt_files[0].name}) but no .engine file")
+            print(f"       → Step 1 (x86): export ONNX:  yolo export model={pt_files[0]} format=onnx")
+            print(f"       → Step 2 (Jetson): make build-trt MODEL={pt_files[0].stem}.onnx PRECISION=fp16")
+            all_ok = False
+        else:
+            print(f"[FAIL] No model files in {vision_path}")
+            print(f"       → Run: ./scripts/setup_models.sh")
+            print(f"       → Or:  make build-trt MODEL=yolov8n.pt PRECISION=fp16")
+            all_ok = False
+
+    # ── Language model ────────────────────────────────────────────────────────
     if llm_path.exists():
         files = list(llm_path.glob("*.gguf")) + list(llm_path.glob("*.bin"))
         if files:
-            print(f"[OK] LLM model: {llm_path} ({len(files)} files)")
+            for f in files:
+                size_gb = f.stat().st_size / (1024 ** 3)
+                print(f"[OK] LLM model: {f.name} ({size_gb:.1f}GB)")
         else:
-            print(f"[WARN] LLM model dir exists but no model files: {llm_path}")
+            print(f"[WARN] LLM model dir exists but no .gguf/.bin files: {llm_path}")
+            print(f"       → Run: ./scripts/setup_models.sh")
             all_ok = False
     else:
-        print(f"[INFO] LLM model: {llm_path} (not found)")
+        print(f"[INFO] LLM model dir not found: {llm_path} (will use stub mode)")
 
     return all_ok
 

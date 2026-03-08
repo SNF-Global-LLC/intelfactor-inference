@@ -45,6 +45,11 @@ class EventStore(ABC):
         """Count events matching filters."""
         ...
 
+    @abstractmethod
+    def list_alerts(self, limit: int = 20) -> list[dict[str, Any]]:
+        """List unacknowledged anomaly alerts, newest first."""
+        ...
+
 
 class EvidenceStore(ABC):
     """Abstract interface for evidence storage."""

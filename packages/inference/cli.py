@@ -117,7 +117,12 @@ def run_station():
     # Start API server in background thread
     from packages.inference.api_v2 import create_app
 
-    app = create_app(runtime)
+    app = create_app(
+        runtime=runtime,
+        sensor_service=getattr(runtime, "sensor_service", None),
+        maintenance_iq=getattr(runtime, "maintenance_iq", None),
+        machine_health_config=getattr(runtime, "machine_health_config", None),
+    )
 
     api_thread = threading.Thread(
         target=lambda: app.run(host=args.host, port=args.port, debug=False, threaded=True),

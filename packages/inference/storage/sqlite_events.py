@@ -121,6 +121,16 @@ class SQLiteEventStore(EventStore):
         result = self._conn.execute(query, params).fetchone()
         return result[0] if result else 0
 
+    def list_alerts(self, limit: int = 20) -> list[dict[str, Any]]:
+        """List unacknowledged anomaly alerts, newest first."""
+        rows = self._conn.execute(
+            """SELECT * FROM anomaly_alerts
+               WHERE acknowledged = 0
+               ORDER BY timestamp DESC LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def _row_to_dict(self, row) -> dict[str, Any]:
         """Convert a sqlite Row to dict with parsed JSON fields."""
         d = dict(row)
