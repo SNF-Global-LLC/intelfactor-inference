@@ -168,24 +168,117 @@ def check_camera(source: str, protocol: str = "rtsp") -> CheckResult:
 
 
 def check_vision_model(model_dir: str) -> CheckResult:
-    """Check for TensorRT engine files."""
+    """
+    Check for TensorRT engine files and verify they load on the current device.
+
+    Three-stage check:
+      1. File presence — is there a .engine file at all?
+      2. Architecture probe — does the engine manifest claim the right device?
+      3. Load test — does tensorrt actually deserialize it without errors?
+
+    Stage 3 is skipped gracefully when TensorRT/pycuda is not installed
+    (development machines) — file presence is enough there.
+    """
     path = Path(model_dir)
     if not path.exists():
-        return CheckResult("Vision Model", False, f"Model dir not found: {model_dir}", "Create directory and add .engine file")
+        return CheckResult(
+            "Vision Model", False,
+            f"Model dir not found: {model_dir}",
+            "Create directory and run: make build-trt MODEL=yolov8n.pt PRECISION=fp16",
+        )
 
     engines = list(path.glob("*.engine"))
-    onnx = list(path.glob("*.onnx"))
-    pt = list(path.glob("*.pt"))
+    onnx_files = list(path.glob("*.onnx"))
+    pt_files = list(path.glob("*.pt"))
 
-    if engines:
+    # ── Stage 1: file presence ────────────────────────────────────────────────
+    if not engines:
+        if onnx_files:
+            return CheckResult(
+                "Vision Model", False,
+                f"ONNX found ({onnx_files[0].name}) but no .engine file",
+                f"Run: make build-trt MODEL={onnx_files[0]} PRECISION=fp16",
+            )
+        if pt_files:
+            return CheckResult(
+                "Vision Model", False,
+                f"PyTorch .pt found ({pt_files[0].name}) but no .engine file",
+                f"Run: make build-trt MODEL={pt_files[0]} PRECISION=fp16\n"
+                "           NOTE: export ONNX on x86 first, then build engine on Jetson",
+            )
+        return CheckResult(
+            "Vision Model", False,
+            "No model files found in model directory",
+            f"Run: make build-trt MODEL=yolov8n.pt PRECISION=fp16\n"
+            f"     or: ./scripts/setup_models.sh",
+        )
+
+    # ── Stage 2: manifest cross-check (device architecture) ──────────────────
+    for engine_path in engines:
+        stem = engine_path.stem
+        manifest_path = engine_path.parent / f"{stem}_manifest.json"
+        if manifest_path.exists():
+            try:
+                import json as _json
+                manifest = _json.loads(manifest_path.read_text())
+                built_on = manifest.get("device_model", "")
+                built_arch = manifest.get("device_arch", "")
+                current_arch = os.uname().machine
+
+                if built_arch and built_arch != current_arch:
+                    return CheckResult(
+                        "Vision Model", False,
+                        f"Engine architecture mismatch: built for {built_arch}, "
+                        f"running on {current_arch}",
+                        f"Rebuild on this device: make build-trt MODEL=<source> PRECISION=fp16",
+                    )
+            except Exception:
+                pass  # manifest parse failure is non-fatal — continue to load test
+
+    # ── Stage 3: TRT load test ────────────────────────────────────────────────
+    engine_path = engines[0]
+    size_mb = engine_path.stat().st_size / (1024 * 1024)
+
+    try:
+        import tensorrt as trt  # type: ignore[import]
+
+        trt_logger = trt.Logger(trt.Logger.ERROR)
+        runtime = trt.Runtime(trt_logger)
+
+        with open(engine_path, "rb") as f:
+            engine = runtime.deserialize_cuda_engine(f.read())
+
+        if engine is None:
+            return CheckResult(
+                "Vision Model", False,
+                f"Engine deserialization failed: {engine_path.name}",
+                "Engine may be built for a different GPU architecture. "
+                "Run: make build-trt MODEL=<source> PRECISION=fp16",
+            )
+
+        # Check input tensor count as minimal sanity test
+        n_io = engine.num_io_tensors
+        return CheckResult(
+            "Vision Model", True,
+            f"{engine_path.name} ({size_mb:.0f}MB) — loads OK, {n_io} I/O tensors",
+            f"Full verify: make verify-trt ENGINE={engine_path}",
+        )
+
+    except ImportError:
+        # TensorRT not installed on this machine (dev environment) — file check only
         sizes = [f"{e.name} ({e.stat().st_size / (1024*1024):.0f}MB)" for e in engines]
-        return CheckResult("Vision Model", True, f"TRT engines: {', '.join(sizes)}")
-    elif onnx:
-        return CheckResult("Vision Model", False, f"ONNX found but no .engine", "Run scripts/build_trt_engine.sh to build TRT engine")
-    elif pt:
-        return CheckResult("Vision Model", False, f"PyTorch .pt found but no .engine", "Run scripts/build_trt_engine.sh <model>.pt")
-    else:
-        return CheckResult("Vision Model", False, "No model files found", f"Add YOLOv8 .engine to {model_dir}")
+        return CheckResult(
+            "Vision Model", True,
+            f"TRT engines present: {', '.join(sizes)} "
+            f"(TensorRT not installed — load test skipped)",
+        )
+
+    except Exception as exc:
+        return CheckResult(
+            "Vision Model", False,
+            f"Engine load failed: {exc}",
+            "Run: make verify-trt ENGINE=" + str(engine_path),
+        )
 
 
 def check_language_model(model_dir: str) -> CheckResult:

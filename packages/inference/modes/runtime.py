@@ -88,6 +88,11 @@ class StationRuntime:
         self._rca_thread: threading.Thread | None = None
         self._review_queue: queue.Queue[DetectionResult] = queue.Queue(maxsize=1000)
 
+        # Machine health copilot — initialized in start() when machine_health.enabled
+        self.sensor_service: Any = None
+        self.maintenance_iq: Any = None
+        self.machine_health_config: dict[str, Any] = {}
+
     def start(self) -> None:
         """Initialize all components and start the RCA background loop."""
         logger.info("Starting StationRuntime: station=%s mode=%s", self.config.station_id, self.mode.value)
@@ -116,6 +121,39 @@ class StationRuntime:
 
         # Load edge.yaml for process parameters
         edge_yaml = self._load_edge_yaml()
+
+        # ── Machine Health Copilot ────────────────────────────────────
+        mh_cfg = edge_yaml.get("machine_health", {})
+        if mh_cfg.get("enabled", False):
+            try:
+                from packages.ingestion.sensor_service import SensorService
+                from packages.policy.maintenance_iq import MaintenanceIQ
+
+                sensors_db = Path(self.config.data_dir) / "sensors.db"
+                thresholds = mh_cfg.get("thresholds", {})
+                warning_t = float(thresholds.get("warning", 2.0))
+                critical_t = float(thresholds.get("critical", 3.5))
+
+                self.sensor_service = SensorService(
+                    station_id=self.config.station_id,
+                    db_path=sensors_db,
+                    warning_threshold=warning_t,
+                    critical_threshold=critical_t,
+                )
+                self.sensor_service.start()
+
+                self.maintenance_iq = MaintenanceIQ.from_edge_yaml(edge_yaml)
+                self.machine_health_config = mh_cfg
+
+                n_topics = len(self.sensor_service.topics)
+                logger.info(
+                    "Sensor ingestion started for %d sensor topics (warning=%.1f, critical=%.1f)",
+                    n_topics, warning_t, critical_t,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Machine health copilot init failed — sensor monitoring disabled: %s", exc
+                )
 
         # Initialize RCA pipeline
         data_dir = Path(self.config.data_dir)
@@ -267,7 +305,7 @@ class StationRuntime:
 
     def get_stats(self) -> dict[str, Any]:
         """Get station runtime statistics."""
-        stats = {
+        stats: dict[str, Any] = {
             "station_id": self.config.station_id,
             "mode": self.mode.value,
             "running": self._running,
@@ -275,6 +313,8 @@ class StationRuntime:
         }
         if self.pipeline:
             stats["pipeline"] = self.pipeline.get_stats()
+        if self.sensor_service is not None:
+            stats["sensor_service"] = self.sensor_service.get_stats()
         return stats
 
     def stop(self) -> None:
@@ -289,6 +329,8 @@ class StationRuntime:
         if self.pipeline:
             self.pipeline.accumulator.stop()
             self.pipeline.recommender.stop()
+        if self.sensor_service is not None:
+            self.sensor_service.stop()
         logger.info("StationRuntime stopped")
 
 

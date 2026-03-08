@@ -92,6 +92,35 @@ sop_map:
     discoloration: "SOP 6.3.1"
   default_section: "SOP (refer to quality manual)"
 
+# ── Machine Health Copilot ────────────────────────────────────────────
+machine_health:
+  enabled: true
+  assets:
+    - machine_id: vacuum-chamber-01
+      asset_type: vacuum-chamber
+      display_name: "Vacuum Chamber #1"
+      sensors: [current]
+    - machine_id: grinding-spindle-01
+      asset_type: grinding-spindle
+      display_name: "Grinding Spindle #1"
+      sensors: [vibration, current]
+    - machine_id: injection-moulder-01
+      asset_type: injection-moulder
+      display_name: "Injection Moulder #1"
+      sensors: [current, vibration]
+  thresholds:
+    warning: 2.0
+    critical: 3.5
+  sop_map:
+    grinding-spindle:
+      vibration: "SOP 4.2.3 — Inspect spindle bearings"
+      current: "SOP 4.3.1 — Check motor drive"
+    vacuum-chamber:
+      current: "SOP 7.1.2 — Inspect vacuum pump"
+    injection-moulder:
+      current: "SOP 8.2.1 — Check hydraulic pump"
+      vibration: "SOP 8.2.4 — Inspect barrel bearings"
+
 # ── Monitoring ───────────────────────────────────────────────────────
 monitoring:
   prometheus_port: 9090

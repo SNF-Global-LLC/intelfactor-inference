@@ -1,10 +1,24 @@
-FROM python:3.12-slim
+# IntelFactor.ai — Hub Cloud Sync Agent Dockerfile
+# Syncs station SQLite data and evidence from the hub to cloud API/S3.
+#
+# Mirrors deploy/hybrid/Dockerfile.sync exactly.
+# The full project must be copied so storage/, schemas/, and sync_cloud.py
+# can all be imported together. pip install ".[sync]" installs the correct deps.
+
+FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY pyproject.toml .
-COPY packages/ packages/
+# Copy full project (sync agent needs storage/, schemas/, sync_cloud.py)
+COPY . .
 
-RUN pip install --no-cache-dir psycopg2-binary pyyaml
+# Install project with sync extras (boto3, requests, tenacity)
+RUN pip install --no-cache-dir ".[sync]"
 
-CMD ["python", "-m", "packages.inference.sync"]
+# Environment defaults
+ENV SYNC_INTERVAL_SEC=300
+ENV SYNC_BATCH_SIZE=100
+ENV PYTHONPATH=/app
+
+# Run sync agent
+CMD ["python", "-m", "packages.inference.sync_cloud"]

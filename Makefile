@@ -20,7 +20,7 @@ help: ## Show this help
 	@echo "Usage: make <target>"
 	@echo ""
 	@echo "Targets:"
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-20s$(NC) %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-20s$(NC) %s\n", $$1, $$2}'
 
 # ── Build ────────────────────────────────────────────────────────────────────
 
@@ -77,8 +77,49 @@ test-storage: ## Run storage tests only
 test-api: ## Run API tests only
 	python3 -m pytest tests/test_api_v2.py -v
 
+test-sensors: ## Run sensor + maintenance IQ tests only
+	python3 -m pytest tests/test_sensor_service.py tests/test_maintenance_iq.py -v
+
 lint: ## Run linter
 	python3 -m ruff check packages/ tests/
+
+# ── TensorRT Engine ──────────────────────────────────────────────────────────
+
+build-trt: ## Build TRT engine from .pt or .onnx on this device (usage: make build-trt MODEL=yolov8n.pt PRECISION=fp16)
+	@if [ -z "$(MODEL)" ]; then \
+		echo "$(RED)ERROR: MODEL required$(NC)"; \
+		echo "Usage: make build-trt MODEL=yolov8n.pt PRECISION=fp16"; \
+		echo "       make build-trt MODEL=yolov8n.onnx PRECISION=fp16"; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)Building TRT engine: $(MODEL) [$(or $(PRECISION),fp16)]$(NC)"
+	@echo "$(YELLOW)⚠  Engine is device-specific — build ON the target Jetson$(NC)"
+	./scripts/build_trt_engine.sh "$(MODEL)" "$(or $(PRECISION),fp16)"
+
+build-trt-int8: ## Build INT8 TRT engine with calibration (usage: make build-trt-int8 MODEL=yolov8n.pt CALIB_DIR=./calibration_images/)
+	@if [ -z "$(MODEL)" ]; then \
+		echo "$(RED)ERROR: MODEL required$(NC)"; \
+		echo "Usage: make build-trt-int8 MODEL=yolov8n.pt CALIB_DIR=./calibration_images/"; \
+		exit 1; \
+	fi
+	@if [ -z "$(CALIB_DIR)" ]; then \
+		echo "$(RED)ERROR: CALIB_DIR required for INT8$(NC)"; \
+		echo "Usage: make build-trt-int8 MODEL=yolov8n.pt CALIB_DIR=./calibration_images/"; \
+		echo "       Minimum 100 calibration images required."; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)Building INT8 TRT engine: $(MODEL)$(NC)"
+	@echo "$(YELLOW)⚠  Engine is device-specific — build ON the target Jetson$(NC)"
+	./scripts/build_trt_engine.sh "$(MODEL)" int8 --calib "$(CALIB_DIR)"
+
+verify-trt: ## Verify a TRT engine loads and runs on this device (usage: make verify-trt ENGINE=/opt/intelfactor/models/vision/yolov8n_fp16.engine)
+	@if [ -z "$(ENGINE)" ]; then \
+		echo "$(RED)ERROR: ENGINE path required$(NC)"; \
+		echo "Usage: make verify-trt ENGINE=/opt/intelfactor/models/vision/yolov8n_fp16.engine"; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)Verifying engine: $(ENGINE)$(NC)"
+	python3 scripts/verify_trt_engine.py "$(ENGINE)"
 
 # ── Deploy ───────────────────────────────────────────────────────────────────
 
