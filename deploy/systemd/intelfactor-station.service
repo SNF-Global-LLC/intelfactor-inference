@@ -11,6 +11,7 @@ User=intelfactor
 Group=intelfactor
 WorkingDirectory=/opt/intelfactor
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/opt/intelfactor
 Environment=CUDA_VISIBLE_DEVICES=0
 
 ExecStart=/opt/intelfactor/venv/bin/intelfactor-station \
