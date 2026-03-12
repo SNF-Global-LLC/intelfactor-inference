@@ -1,0 +1,570 @@
+{
+  "surface_discolor": {
+    "observation_count": 2257,
+    "top_causes": [
+      [
+        "oxidation",
+        1214
+      ],
+      [
+        "oxidation during processing",
+        914
+      ],
+      [
+        "improper heat treatment",
+        854
+      ],
+      [
+        "contamination during processing",
+        645
+      ],
+      [
+        "improper cleaning process",
+        230
+      ],
+      [
+        "heat treatment issue",
+        191
+      ],
+      [
+        "heat treatment inconsistency",
+        154
+      ],
+      [
+        "improper cleaning",
+        113
+      ],
+      [
+        "improper surface treatment",
+        74
+      ],
+      [
+        "heat exposure",
+        45
+      ]
+    ],
+    "top_actions": [
+      [
+        "inspect heat treatment process",
+        669
+      ],
+      [
+        "clean and polish the surface",
+        596
+      ],
+      [
+        "polish the surface",
+        536
+      ],
+      [
+        "improve surface cleaning procedures",
+        442
+      ],
+      [
+        "review heat treatment process",
+        413
+      ],
+      [
+        "review environmental controls during manufacturing",
+        295
+      ],
+      [
+        "review cleaning and finishing procedures",
+        167
+      ],
+      [
+        "polish affected area",
+        109
+      ],
+      [
+        "review processing environment for contaminants",
+        88
+      ],
+      [
+        "apply surface cleaning or polishing",
+        74
+      ]
+    ],
+    "sample_descriptions": [
+      "The surface shows uneven discoloration, likely due to oxidation or heat treatment inconsistencies.",
+      "The surface shows uneven discoloration, likely caused by oxidation or heat treatment issues.",
+      "The surface shows uneven discoloration, likely due to oxidation or heat treatment inconsistencies.",
+      "The surface shows uneven discoloration, likely due to oxidation or improper cleaning during manufacturing.",
+      "The metal surface shows uneven discoloration, likely caused by oxidation or heat treatment issues."
+    ]
+  },
+  "surface_crack": {
+    "observation_count": 707,
+    "top_causes": [
+      [
+        "material fatigue",
+        427
+      ],
+      [
+        "improper cooling process",
+        278
+      ],
+      [
+        "material stress during processing",
+        197
+      ],
+      [
+        "improper cooling",
+        178
+      ],
+      [
+        "improper cooling during manufacturing",
+        93
+      ],
+      [
+        "stress during manufacturing",
+        77
+      ],
+      [
+        "material stress",
+        47
+      ],
+      [
+        "improper heat treatment",
+        41
+      ],
+      [
+        "material stress during manufacturing",
+        28
+      ],
+      [
+        "manufacturing stress",
+        15
+      ]
+    ],
+    "top_actions": [
+      [
+        "review cooling process parameters",
+        294
+      ],
+      [
+        "inspect and repair the affected area",
+        205
+      ],
+      [
+        "inspect and replace affected material",
+        131
+      ],
+      [
+        "review cooling and stress-relief processes",
+        52
+      ],
+      [
+        "inspect and replace the affected part",
+        43
+      ],
+      [
+        "perform detailed inspection",
+        36
+      ],
+      [
+        "inspect and repair the surface",
+        32
+      ],
+      [
+        "review cooling and heat treatment process",
+        32
+      ],
+      [
+        "perform detailed inspection of the affected area",
+        26
+      ],
+      [
+        "inspect and repair the surface crack",
+        22
+      ]
+    ],
+    "sample_descriptions": [
+      "Visible surface cracks are present, likely caused by stress or improper cooling during manufacturing.",
+      "Visible surface cracks are present, likely caused by stress or improper cooling during manufacturing.",
+      "The surface shows visible cracks that are irregular and spread across the area, indicating potential material fatigue or cooling issues.",
+      "Visible surface cracks are present across the metal, indicating potential structural issues.",
+      "Visible surface cracks are present, likely caused by stress or improper cooling during manufacturing."
+    ]
+  },
+  "blade_scratch": {
+    "observation_count": 682,
+    "top_causes": [
+      [
+        "improper handling during manufacturing",
+        383
+      ],
+      [
+        "contact with abrasive surfaces",
+        376
+      ],
+      [
+        "improper handling during processing",
+        251
+      ],
+      [
+        "abrasive contact during processing",
+        102
+      ],
+      [
+        "abrasive contact with other surfaces",
+        101
+      ],
+      [
+        "improper handling during grinding",
+        45
+      ],
+      [
+        "abrasive contact during grinding",
+        31
+      ],
+      [
+        "abrasive contact with machinery",
+        16
+      ],
+      [
+        "abrasive contact during finishing",
+        13
+      ],
+      [
+        "contaminated grinding wheel",
+        13
+      ]
+    ],
+    "top_actions": [
+      [
+        "polish the surface to remove scratches",
+        516
+      ],
+      [
+        "review handling procedures to prevent recurrence",
+        351
+      ],
+      [
+        "review handling procedures to prevent future damage",
+        105
+      ],
+      [
+        "review handling procedures to prevent future occurrences",
+        77
+      ],
+      [
+        "inspect and adjust handling procedures",
+        34
+      ],
+      [
+        "polish the affected area",
+        33
+      ],
+      [
+        "polish the surface to remove the scratch",
+        26
+      ],
+      [
+        "review handling procedures",
+        26
+      ],
+      [
+        "implement stricter handling protocols",
+        19
+      ],
+      [
+        "inspect and replace affected blades",
+        13
+      ]
+    ],
+    "sample_descriptions": [
+      "The surface shows visible linear scratches, likely caused by abrasive contact or mishandling.",
+      "The surface shows visible linear scratches, likely caused by contact with abrasive materials or improper handling.",
+      "The surface shows fine linear scratches, likely caused by abrasive contact or improper handling.",
+      "The surface shows visible linear scratches, likely caused by abrasive contact or improper handling.",
+      "The surface shows visible linear scratches, likely caused by abrasive contact or mishandling."
+    ]
+  },
+  "surface_dent": {
+    "observation_count": 595,
+    "top_causes": [
+      [
+        "impact during transportation",
+        256
+      ],
+      [
+        "improper handling during processing",
+        186
+      ],
+      [
+        "impact during handling",
+        172
+      ],
+      [
+        "improper handling",
+        122
+      ],
+      [
+        "improper handling during manufacturing",
+        114
+      ],
+      [
+        "manufacturing process error",
+        100
+      ],
+      [
+        "impact during processing",
+        89
+      ],
+      [
+        "impact during transport",
+        73
+      ],
+      [
+        "manufacturing process inconsistency",
+        36
+      ],
+      [
+        "material inconsistency",
+        27
+      ]
+    ],
+    "top_actions": [
+      [
+        "polish the surface to remove dents",
+        164
+      ],
+      [
+        "review handling procedures",
+        146
+      ],
+      [
+        "inspect and repair the affected area",
+        137
+      ],
+      [
+        "inspect handling procedures",
+        122
+      ],
+      [
+        "review handling and transportation procedures",
+        75
+      ],
+      [
+        "review handling procedures to prevent future occurrences",
+        51
+      ],
+      [
+        "polish affected area",
+        47
+      ],
+      [
+        "polish the surface",
+        37
+      ],
+      [
+        "review handling and transport procedures",
+        35
+      ],
+      [
+        "inspect and repair affected areas",
+        35
+      ]
+    ],
+    "sample_descriptions": [
+      "The surface shows minor dents that are likely caused by impact or mishandling.",
+      "The surface shows visible indentations that are likely caused by impact or mishandling.",
+      "The surface shows visible indentations and irregularities, indicating dents likely caused by impact.",
+      "The surface shows small indentations that are likely caused by minor impacts.",
+      "The surface shows small indentations that are likely caused by impact or mishandling during processing."
+    ]
+  },
+  "grinding_mark": {
+    "observation_count": 22,
+    "top_causes": [
+      [
+        "uneven pressure during grinding",
+        19
+      ],
+      [
+        "improper grinding technique",
+        12
+      ],
+      [
+        "improper grinding process",
+        10
+      ],
+      [
+        "uneven abrasive application",
+        2
+      ],
+      [
+        "worn grinding wheel",
+        1
+      ]
+    ],
+    "top_actions": [
+      [
+        "adjust grinding process parameters",
+        9
+      ],
+      [
+        "adjust grinding machine settings",
+        9
+      ],
+      [
+        "inspect and recalibrate grinding equipment",
+        8
+      ],
+      [
+        "inspect grinding tools for wear",
+        4
+      ],
+      [
+        "adjust grinding equipment settings",
+        3
+      ],
+      [
+        "train operators on consistent grinding techniques",
+        2
+      ],
+      [
+        "inspect grinding equipment for wear or misalignment",
+        2
+      ],
+      [
+        "train operators on proper grinding techniques",
+        2
+      ],
+      [
+        "inspect and replace abrasive tools if necessary",
+        2
+      ],
+      [
+        "inspect and replace grinding wheel if necessary",
+        1
+      ]
+    ],
+    "sample_descriptions": [
+      "Visible linear marks on the metal surface, likely caused by grinding operations.",
+      "Visible linear grinding marks are present across the surface, indicating uneven grinding during the manufacturing process.",
+      "Visible linear marks across the surface suggest grinding imperfections, likely caused by uneven pressure or improper machine settings.",
+      "A visible linear grinding mark is observed along the surface, likely caused during the finishing process.",
+      "Visible linear grinding marks are present along the surface, likely caused by uneven grinding."
+    ]
+  },
+  "inclusion": {
+    "observation_count": 8,
+    "top_causes": [
+      [
+        "contamination during casting",
+        6
+      ],
+      [
+        "improper material handling",
+        6
+      ],
+      [
+        "improper material processing",
+        2
+      ],
+      [
+        "contaminants in raw material",
+        1
+      ],
+      [
+        "contaminant in raw material",
+        1
+      ]
+    ],
+    "top_actions": [
+      [
+        "inspect and remove inclusions",
+        6
+      ],
+      [
+        "improve material handling processes",
+        4
+      ],
+      [
+        "improve material handling procedures",
+        1
+      ],
+      [
+        "inspect and clean raw materials",
+        1
+      ],
+      [
+        "review material processing procedures",
+        1
+      ],
+      [
+        "review material sourcing and processing procedures",
+        1
+      ],
+      [
+        "inspect and remove defective material",
+        1
+      ],
+      [
+        "improve material handling and cleanliness during production",
+        1
+      ]
+    ],
+    "sample_descriptions": [
+      "Dark irregular patches are visible on the metal surface, indicating the presence of inclusions.",
+      "Dark irregular spots are visible on the metal surface, indicating potential inclusions or impurities embedded in the material.",
+      "Dark irregular patches observed on the metal surface, indicative of material inclusions.",
+      "A dark irregular inclusion is visible on the metal surface, indicating contamination or foreign material embedded during processing.",
+      "Dark irregular patches are visible on the metal surface, indicating possible inclusions or foreign material embedded in the metal."
+    ]
+  },
+  "weld_defect": {
+    "observation_count": 3,
+    "top_causes": [
+      [
+        "improper welding technique",
+        3
+      ],
+      [
+        "inconsistent heat application",
+        1
+      ],
+      [
+        "insufficient heat control",
+        1
+      ],
+      [
+        "insufficient heat during welding",
+        1
+      ]
+    ],
+    "top_actions": [
+      [
+        "inspect and rework the weld area",
+        1
+      ],
+      [
+        "review welding process parameters",
+        1
+      ],
+      [
+        "reinspect and rework the weld",
+        1
+      ],
+      [
+        "adjust welding parameters",
+        1
+      ],
+      [
+        "inspect and rework the weld",
+        1
+      ],
+      [
+        "adjust welding parameters and retrain operators",
+        1
+      ]
+    ],
+    "sample_descriptions": [
+      "The image shows an irregular weld line with visible inconsistencies and potential voids, indicating a weld defect.",
+      "The image shows an irregular weld bead with uneven surface texture and potential gaps, indicating a welding defect.",
+      "The image shows an irregular and uneven weld line, indicating a potential weld defect."
+    ]
+  }
+}

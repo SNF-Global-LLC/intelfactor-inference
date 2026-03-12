@@ -1,0 +1,451 @@
+{
+  "meta": {
+    "images_processed": 4318,
+    "images_failed": 1,
+    "dataset": "/Users/tonyadmin/intelfactor-inference/training/datasets/raw/roboflow/neu-surface-defect",
+    "model": "gpt-4o",
+    "deployment": "gpt-4o",
+    "endpoint": "https://eastus.api.cognitive.microsoft.com/"
+  },
+  "agreement": {
+    "total_images": 4318,
+    "labeled_images": 4318,
+    "overall_agreement_rate": 0.425,
+    "false_negative_count": 44,
+    "wrong_type_count": 2439,
+    "per_class_agreement": {
+      "surface_crack": {
+        "total": 734,
+        "agreement_rate": 0.586,
+        "miss_rate": 0.005,
+        "wrong_type_rate": 0.409
+      },
+      "inclusion": {
+        "total": 898,
+        "agreement_rate": 0.147,
+        "miss_rate": 0.0,
+        "wrong_type_rate": 0.853
+      },
+      "surface_discolor": {
+        "total": 1542,
+        "agreement_rate": 0.667,
+        "miss_rate": 0.0,
+        "wrong_type_rate": 0.333
+      },
+      "surface_dent": {
+        "total": 737,
+        "agreement_rate": 0.132,
+        "miss_rate": 0.054,
+        "wrong_type_rate": 0.814
+      },
+      "blade_scratch": {
+        "total": 712,
+        "agreement_rate": 0.527,
+        "miss_rate": 0.0,
+        "wrong_type_rate": 0.473
+      }
+    },
+    "false_negatives": [
+      {
+        "image": "crazing_132_jpg.rf.15fc9f40594aefbf3ece0468caa3ebcf.jpg",
+        "gt_classes": [
+          "surface_crack"
+        ],
+        "gpt_description": "The metal surface appears uniform with no visible defects or irregularities.",
+        "gpt_confidence": 0.95
+      },
+      {
+        "image": "crazing_41_jpg.rf.712be93ffc7cc28e5c6b182d3b74b8db.jpg",
+        "gt_classes": [
+          "surface_crack"
+        ],
+        "gpt_description": "The metal surface appears uniform with no visible defects or irregularities.",
+        "gpt_confidence": 0.95
+      },
+      {
+        "image": "crazing_90_jpg.rf.5102e669ec290a5eb00f8c9a7c8e3ea9.jpg",
+        "gt_classes": [
+          "surface_crack"
+        ],
+        "gpt_description": "The metal surface appears uniform with no visible defects or irregularities.",
+        "gpt_confidence": 0.95
+      },
+      {
+        "image": "pitted_surface_107_jpg.rf.44474beea02571f33459b625ad0128ea.jpg",
+        "gt_classes": [
+          "surface_dent"
+        ],
+        "gpt_description": "The metal surface appears uniform with no visible defects or irregularities.",
+        "gpt_confidence": 0.95
+      },
+      {
+        "image": "pitted_surface_136_jpg.rf.7f46229622b2e152ee88aa985ef620a4.jpg",
+        "gt_classes": [
+          "surface_dent"
+        ],
+        "gpt_description": "The metal surface appears uniform with no visible defects or irregularities.",
+        "gpt_confidence": 0.95
+      },
+      {
+        "image": "pitted_surface_137_jpg.rf.07afecbbe313569ec953816837f6d7bd.jpg",
+        "gt_classes": [
+          "surface_dent"
+        ],
+        "gpt_description": "The metal surface appears uniform with no visible defects or irregularities.",
+        "gpt_confidence": 1.0
+      },
+      {
+        "image": "pitted_surface_139_jpg.rf.7681d3fa4f5e72ba3825f7ed32ebd3c6.jpg",
+        "gt_classes": [
+          "surface_dent"
+        ],
+        "gpt_description": "The metal surface appears uniform with no visible defects or irregularities.",
+        "gpt_confidence": 0.95
+      },
+      {
+        "image": "pitted_surface_145_jpg.rf.99437eb1bbbfa1f36c6df2eed99dcef9.jpg",
+        "gt_classes": [
+          "surface_dent"
+        ],
+        "gpt_description": "The metal surface appears uniform with no visible defects or irregularities.",
+        "gpt_confidence": 1.0
+      },
+      {
+        "image": "pitted_surface_146_jpg.rf.0812e2c757f4492f9192be291f86395c.jpg",
+        "gt_classes": [
+          "surface_dent"
+        ],
+        "gpt_description": "The metal surface appears uniform with no visible defects or irregularities.",
+        "gpt_confidence": 1.0
+      },
+      {
+        "image": "pitted_surface_14_jpg.rf.5799dc6f8e1eac7a8d46e882742ea408.jpg",
+        "gt_classes": [
+          "surface_dent"
+        ],
+        "gpt_description": "The metal surface appears uniform with no visible defects or irregularities.",
+        "gpt_confidence": 1.0
+      },
+      {
+        "image": "pitted_surface_14_jpg.rf.f0dff5a07fa9777a5dff859109985191.jpg",
+        "gt_classes": [
+          "surface_dent"
+        ],
+        "gpt_description": "The metal surface appears uniform with no visible defects or irregularities.",
+        "gpt_confidence": 1.0
+      },
+      {
+        "image": "pitted_surface_191_jpg.rf.ae0d4c319cf561593c396fef6f93fe6a.jpg",
+        "gt_classes": [
+          "surface_dent"
+        ],
+        "gpt_description": "The metal surface appears uniform with no visible defects or irregularities.",
+        "gpt_confidence": 0.95
+      },
+      {
+        "image": "pitted_surface_191_jpg.rf.f873688c3a48f8104b6de7a4f71fec16.jpg",
+        "gt_classes": [
+          "surface_dent"
+        ],
+        "gpt_description": "The metal surface appears uniform with no visible defects or irregularities.",
+        "gpt_confidence": 1.0
+      },
+      {
+        "image": "pitted_surface_198_jpg.rf.a9aadf7f7523b5a2fa785adddbf3a95f.jpg",
+        "gt_classes": [
+          "surface_dent"
+        ],
+        "gpt_description": "The metal surface appears uniform with no visible defects or irregularities.",
+        "gpt_confidence": 0.95
+      },
+      {
+        "image": "pitted_surface_227_jpg.rf.874617c218b698fb802772d5492a532b.jpg",
+        "gt_classes": [
+          "surface_dent"
+        ],
+        "gpt_description": "The metal surface appears uniform with no visible defects or irregularities.",
+        "gpt_confidence": 0.95
+      },
+      {
+        "image": "pitted_surface_243_jpg.rf.9f4d730f946681fe28c24901359b809e.jpg",
+        "gt_classes": [
+          "surface_dent"
+        ],
+        "gpt_description": "The metal surface appears uniform with no visible defects or irregularities.",
+        "gpt_confidence": 0.95
+      },
+      {
+        "image": "pitted_surface_243_jpg.rf.61c62d71aa869117579be063c5e74813.jpg",
+        "gt_classes": [
+          "surface_dent"
+        ],
+        "gpt_description": "The metal surface appears uniform with no visible defects or irregularities.",
+        "gpt_confidence": 1.0
+      },
+      {
+        "image": "pitted_surface_251_jpg.rf.e3afeb946b70ffa20b324e251a0912ab.jpg",
+        "gt_classes": [
+          "surface_dent"
+        ],
+        "gpt_description": "The metal surface appears uniform with no visible defects or irregularities.",
+        "gpt_confidence": 1.0
+      },
+      {
+        "image": "pitted_surface_251_jpg.rf.ffaf1a192bef82bcb71d5312482eafb3.jpg",
+        "gt_classes": [
+          "surface_dent"
+        ],
+        "gpt_description": "The metal surface appears uniform with no visible defects or irregularities.",
+        "gpt_confidence": 0.95
+      },
+      {
+        "image": "pitted_surface_252_jpg.rf.3646028b4b5706294b9a76dea0a07466.jpg",
+        "gt_classes": [
+          "surface_dent"
+        ],
+        "gpt_description": "The metal surface appears uniform with no visible defects such as scratches, dents, or cracks.",
+        "gpt_confidence": 0.95
+      }
+    ],
+    "wrong_type_predictions": [
+      {
+        "image": "crazing_103_jpg.rf.088668a0b212ac3240e48db5119ca68c.jpg",
+        "gt_classes": [
+          "surface_crack"
+        ],
+        "gpt_predicted": "blade_scratch",
+        "gpt_description": "The surface shows visible linear scratches, likely caused by abrasive contact or mishandling.",
+        "gpt_confidence": 0.85
+      },
+      {
+        "image": "crazing_105_jpg.rf.4908df4245a5d2269e326849162914e9.jpg",
+        "gt_classes": [
+          "inclusion",
+          "surface_crack"
+        ],
+        "gpt_predicted": "surface_discolor",
+        "gpt_description": "The surface shows uneven discoloration, likely due to oxidation or heat treatment inconsistencies.",
+        "gpt_confidence": 0.85
+      },
+      {
+        "image": "crazing_109_jpg.rf.600e832ab544f52f96befdae3d308432.jpg",
+        "gt_classes": [
+          "surface_crack"
+        ],
+        "gpt_predicted": "surface_discolor",
+        "gpt_description": "The surface shows uneven discoloration, likely caused by oxidation or heat treatment issues.",
+        "gpt_confidence": 0.85
+      },
+      {
+        "image": "crazing_109_jpg.rf.2b1804f233a3227a1e93de15ad336436.jpg",
+        "gt_classes": [
+          "surface_crack"
+        ],
+        "gpt_predicted": "surface_discolor",
+        "gpt_description": "The surface shows uneven discoloration, likely due to oxidation or heat treatment inconsistencies.",
+        "gpt_confidence": 0.85
+      },
+      {
+        "image": "crazing_10_jpg.rf.6ef4c2bec0a83274a2e95b84a4cf4286.jpg",
+        "gt_classes": [
+          "surface_crack"
+        ],
+        "gpt_predicted": "surface_dent",
+        "gpt_description": "The surface shows minor dents that are likely caused by impact or mishandling.",
+        "gpt_confidence": 0.85
+      },
+      {
+        "image": "crazing_10_jpg.rf.25f3041a89d97c3730bf7119058c6f3c.jpg",
+        "gt_classes": [
+          "surface_crack"
+        ],
+        "gpt_predicted": "blade_scratch",
+        "gpt_description": "The surface shows visible linear scratches, likely caused by contact with abrasive materials or improper handling.",
+        "gpt_confidence": 0.85
+      },
+      {
+        "image": "crazing_111_jpg.rf.f2a25b7aacb18bf2f5aa11ceb5d6e55a.jpg",
+        "gt_classes": [
+          "surface_crack"
+        ],
+        "gpt_predicted": "surface_dent",
+        "gpt_description": "The surface shows visible indentations that are likely caused by impact or mishandling.",
+        "gpt_confidence": 0.85
+      },
+      {
+        "image": "crazing_117_jpg.rf.caf425425e2c6350558e77b1c4f5ccb8.jpg",
+        "gt_classes": [
+          "surface_crack"
+        ],
+        "gpt_predicted": "surface_discolor",
+        "gpt_description": "The surface shows uneven discoloration, likely due to oxidation or improper cleaning during manufacturing.",
+        "gpt_confidence": 0.85
+      },
+      {
+        "image": "crazing_11_jpg.rf.2544ec332f4b79f11fcda041936c4159.jpg",
+        "gt_classes": [
+          "surface_crack"
+        ],
+        "gpt_predicted": "surface_discolor",
+        "gpt_description": "The metal surface shows uneven discoloration, likely caused by oxidation or heat treatment issues.",
+        "gpt_confidence": 0.85
+      },
+      {
+        "image": "crazing_117_jpg.rf.8433d315d818e60ca842664ed350e13e.jpg",
+        "gt_classes": [
+          "surface_crack"
+        ],
+        "gpt_predicted": "surface_discolor",
+        "gpt_description": "The surface shows uneven discoloration, likely due to oxidation or heat treatment inconsistencies.",
+        "gpt_confidence": 0.85
+      },
+      {
+        "image": "crazing_123_jpg.rf.06fe7f6aaaf24acf1dfeeacd5877ba23.jpg",
+        "gt_classes": [
+          "surface_crack"
+        ],
+        "gpt_predicted": "surface_dent",
+        "gpt_description": "The surface shows visible indentations and irregularities, indicating dents likely caused by impact.",
+        "gpt_confidence": 0.85
+      },
+      {
+        "image": "crazing_11_jpg.rf.3d4de51ff082ff6c1cba972d66c70fcb.jpg",
+        "gt_classes": [
+          "surface_crack"
+        ],
+        "gpt_predicted": "surface_discolor",
+        "gpt_description": "The surface shows uneven discoloration, likely caused by oxidation or heat treatment inconsistencies.",
+        "gpt_confidence": 0.85
+      },
+      {
+        "image": "crazing_123_jpg.rf.785817a63299dd2c8ad39f68595dd90d.jpg",
+        "gt_classes": [
+          "surface_crack"
+        ],
+        "gpt_predicted": "surface_dent",
+        "gpt_description": "The surface shows small indentations that are likely caused by minor impacts.",
+        "gpt_confidence": 0.85
+      },
+      {
+        "image": "crazing_124_jpg.rf.5bbafb8d6e6b304f0a2513b8b4791a4b.jpg",
+        "gt_classes": [
+          "surface_crack"
+        ],
+        "gpt_predicted": "surface_dent",
+        "gpt_description": "The surface shows small indentations that are likely caused by impact or mishandling during processing.",
+        "gpt_confidence": 0.85
+      },
+      {
+        "image": "crazing_128_jpg.rf.7e4d4242951e7571fcbb469070dcf50f.jpg",
+        "gt_classes": [
+          "surface_crack"
+        ],
+        "gpt_predicted": "surface_dent",
+        "gpt_description": "The surface shows multiple irregular indentations, indicative of dents caused by external impact.",
+        "gpt_confidence": 0.85
+      },
+      {
+        "image": "crazing_128_jpg.rf.281aa714b75ab2e8af8e818ad71e6b65.jpg",
+        "gt_classes": [
+          "surface_crack"
+        ],
+        "gpt_predicted": "surface_dent",
+        "gpt_description": "The surface shows small indentations that are consistent with minor dents.",
+        "gpt_confidence": 0.85
+      },
+      {
+        "image": "crazing_12_jpg.rf.45c5127fbc2613fe15e1190f20770794.jpg",
+        "gt_classes": [
+          "surface_crack"
+        ],
+        "gpt_predicted": "surface_dent",
+        "gpt_description": "A small dent is visible on the metal surface, likely caused by an impact or handling issue.",
+        "gpt_confidence": 0.85
+      },
+      {
+        "image": "crazing_129_jpg.rf.b82d25a7c3a956df72358f1ee5a246cb.jpg",
+        "gt_classes": [
+          "surface_crack"
+        ],
+        "gpt_predicted": "surface_discolor",
+        "gpt_description": "The surface shows uneven discoloration, likely due to oxidation or improper cleaning during processing.",
+        "gpt_confidence": 0.85
+      },
+      {
+        "image": "crazing_12_jpg.rf.e5a3b18e547cdd88175c175c48b7d5ea.jpg",
+        "gt_classes": [
+          "surface_crack"
+        ],
+        "gpt_predicted": "surface_dent",
+        "gpt_description": "A small dent is visible on the metal surface, likely caused by an impact or handling issue.",
+        "gpt_confidence": 0.85
+      },
+      {
+        "image": "crazing_12_jpg.rf.3971b1aabd34f966a24cddef2c264b5e.jpg",
+        "gt_classes": [
+          "surface_crack"
+        ],
+        "gpt_predicted": "surface_dent",
+        "gpt_description": "The surface shows visible dents, likely caused by an impact or pressure during handling or manufacturing.",
+        "gpt_confidence": 0.95
+      }
+    ]
+  },
+  "rca_library_summary": {
+    "surface_discolor": {
+      "count": 2257,
+      "top_cause": [
+        "oxidation",
+        1214
+      ]
+    },
+    "surface_crack": {
+      "count": 707,
+      "top_cause": [
+        "material fatigue",
+        427
+      ]
+    },
+    "blade_scratch": {
+      "count": 682,
+      "top_cause": [
+        "improper handling during manufacturing",
+        383
+      ]
+    },
+    "surface_dent": {
+      "count": 595,
+      "top_cause": [
+        "impact during transportation",
+        256
+      ]
+    },
+    "grinding_mark": {
+      "count": 22,
+      "top_cause": [
+        "uneven pressure during grinding",
+        19
+      ]
+    },
+    "inclusion": {
+      "count": 8,
+      "top_cause": [
+        "contamination during casting",
+        6
+      ]
+    },
+    "weld_defect": {
+      "count": 3,
+      "top_cause": [
+        "improper welding technique",
+        3
+      ]
+    }
+  },
+  "token_usage": {
+    "prompt_tokens": 3461238,
+    "completion_tokens": 351739,
+    "total_tokens": 3812977,
+    "estimated_cost_usd": 12.1705
+  }
+}
