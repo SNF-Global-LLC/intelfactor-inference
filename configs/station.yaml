@@ -21,20 +21,38 @@ edge_yaml_path: /opt/intelfactor/config/edge.yaml
 vision_model: ~
 confidence_threshold: 0.5
 nms_threshold: 0.45
+
+# ── Model Bundle Configuration ─────────────────────────────────────────
+# Standard model bundle contract for production knife-inspection models.
+# Bundle contains: model.engine, labels.json, thresholds.yaml, metadata.json
+model_bundle:
+  # Path to model bundle directory (relative to model_dir or absolute)
+  path: "models/kyoto-yolo26n-v1"
+  
+  # Individual file paths (relative to bundle path or absolute)
+  engine: "model.engine"           # TensorRT engine file
+  labels: "labels.json"            # Class ID -> name mapping
+  thresholds: "thresholds.yaml"    # Per-class confidence thresholds
+  metadata: "metadata.json"        # Model version, info, etc.
+  
+  # Validation behavior
+  validate_on_load: true           # Fail loudly if bundle inconsistent
+  strict_taxonomy: true            # Enforce exact match with defect_classes below
+# Canonical source: configs/wiko_taxonomy.yaml — key order = model class IDs — do not reorder
 defect_classes:
-  - scratch_surface
-  - scratch_deep
-  - chip_edge
-  - chip_blade
-  - dent
-  - discoloration
-  - burr
-  - misalignment
-  - rust_spot
-  - grind_mark
-  - polish_defect
-  - handle_gap
-  - stamp_error
+  - blade_scratch       # 0  major   4.6.1
+  - grinding_mark       # 1  major   4.6.1
+  - surface_dent        # 2  major   4.6.1
+  - surface_crack       # 3  critical 4.6.1
+  - weld_defect         # 4  major   4.6.2
+  - edge_burr           # 5  critical 4.6.8
+  - edge_crack          # 6  critical 4.6.8
+  - handle_defect       # 7  major   4.6.4
+  - bolster_gap         # 8  major   4.6.3
+  - etching_defect      # 9  critical 4.6.9
+  - inclusion           # 10 major   4.6.1
+  - surface_discolor    # 11 minor   4.6.1
+  - overgrind           # 12 major   4.6.5
 
 # ── Language Model (RCA) ──────────────────────────────────────────────
 # Leave blank for auto-detection.
@@ -85,11 +103,19 @@ sop_map:
     grinding_temp: "SOP 4.2.5"
     polishing_pressure: "SOP 5.1.2"
   defect_sops:
-    scratch_surface: "SOP 4.2.3"
-    scratch_deep: "SOP 4.2.4"
-    chip_edge: "SOP 3.1.1"
-    chip_blade: "SOP 3.1.2"
-    discoloration: "SOP 6.3.1"
+    blade_scratch:     "SOP 4.2.3"
+    grinding_mark:     "SOP 4.2.3"
+    surface_dent:      "SOP 3.2.4"
+    surface_crack:     "SOP 2.1.1"
+    weld_defect:       "SOP 4.6.2"
+    edge_burr:         "SOP 3.4.2"
+    edge_crack:        "SOP 4.3.1"
+    handle_defect:     "SOP 6.2.1"
+    bolster_gap:       "SOP 6.1.3"
+    etching_defect:    "SOP 7.1.1"
+    inclusion:         "SOP 5.3.1"
+    surface_discolor:  "SOP 5.2.1"
+    overgrind:         "SOP 4.6.5"
   default_section: "SOP (refer to quality manual)"
 
 # ── Machine Health Copilot ────────────────────────────────────────────

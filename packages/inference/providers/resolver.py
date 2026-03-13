@@ -22,8 +22,34 @@ from packages.inference.schemas import (
     InferenceBackend,
     ModelSpec,
 )
+from packages.inference.utils.model_bundle import (
+    load_labels,
+    load_thresholds,
+    load_metadata,
+    validate_bundle,
+    ModelBundleError,
+)
 
 logger = logging.getLogger(__name__)
+
+# Canonical defect class list — KMG Kyoto Specs (13 classes, IDs 0-12).
+# Must match training/config/defect_taxonomy.yaml and the trained .engine file.
+# Overridden at runtime by station.yaml defect_classes (passed via provider_config).
+_CANONICAL_DEFECT_CLASSES: list[str] = [
+    "blade_scratch",    # 0
+    "grinding_mark",    # 1
+    "surface_dent",     # 2
+    "surface_crack",    # 3
+    "weld_defect",      # 4
+    "edge_burr",        # 5
+    "edge_crack",       # 6
+    "handle_defect",    # 7
+    "bolster_gap",      # 8
+    "etching_defect",   # 9
+    "inclusion",        # 10
+    "surface_discolor", # 11
+    "overgrind",        # 12
+]
 
 
 # ── Model Catalog ──────────────────────────────────────────────────────
@@ -37,6 +63,7 @@ VISION_MODELS: dict[str, dict[str, Any]] = {
         "backend": InferenceBackend.TENSORRT,
         "expected_latency_ms": 15,
         "min_vram_mb": 512,
+        "defect_classes": _CANONICAL_DEFECT_CLASSES,
     },
     "yolov8s_trt": {
         "name": "yolov8s-cutlery-v3",
@@ -44,6 +71,7 @@ VISION_MODELS: dict[str, dict[str, Any]] = {
         "backend": InferenceBackend.TENSORRT,
         "expected_latency_ms": 25,
         "min_vram_mb": 1024,
+        "defect_classes": _CANONICAL_DEFECT_CLASSES,
     },
     "yolo26_trt": {
         "name": "yolo26-cutlery-v1",
@@ -51,6 +79,7 @@ VISION_MODELS: dict[str, dict[str, Any]] = {
         "backend": InferenceBackend.TENSORRT,
         "expected_latency_ms": 20,
         "min_vram_mb": 768,
+        "defect_classes": _CANONICAL_DEFECT_CLASSES,
     },
 }
 
@@ -191,8 +220,37 @@ class CapabilityResolver:
             )
             model_def = VISION_MODELS[model_key]
 
+        # Load model bundle if configured
+        merged_config = {**self.config, **(provider_config or {})}
+        bundle_config = self.config.get("model_bundle", {})
+        
+        if bundle_config and bundle_config.get("path"):
+            try:
+                bundle = self._load_model_bundle(bundle_config)
+                # Merge bundle data into provider config
+                merged_config["model_bundle"] = bundle
+                merged_config["labels"] = bundle["labels"]
+                merged_config["thresholds"] = bundle["thresholds"]
+                merged_config["model_version"] = bundle["metadata"].get("model_version", "unknown")
+                merged_config["model_name"] = bundle["metadata"].get("model_name", "unknown")
+                # Use bundle engine path if available
+                engine_path = bundle["engine_path"]
+                logger.info(
+                    "Loaded model bundle: %s v%s",
+                    bundle["metadata"].get("model_name"),
+                    bundle["metadata"].get("model_version"),
+                )
+            except ModelBundleError as e:
+                if bundle_config.get("validate_on_load", True):
+                    raise RuntimeError(f"Model bundle validation failed: {e}") from e
+                logger.error(f"Failed to load model bundle: {e}")
+                # Fallback to legacy path resolution
+                engine_path = self._find_engine_path(model_def["name"])
+        else:
+            # Legacy path resolution
+            engine_path = self._find_engine_path(model_def["name"])
+
         # Build ModelSpec
-        engine_path = self._find_engine_path(model_def["name"])
         spec = ModelSpec(
             model_name=model_def["name"],
             model_path=str(engine_path),
@@ -201,8 +259,68 @@ class CapabilityResolver:
             expected_latency_ms=model_def["expected_latency_ms"],
         )
 
-        merged_config = {**self.config, **(provider_config or {})}
+        # Guard: defect_classes must be explicit — silent fallback produces defect_0/defect_1 labels
+        if not merged_config.get("defect_classes"):
+            model_defaults = model_def.get("defect_classes", [])
+            if model_defaults:
+                merged_config = {**merged_config, "defect_classes": model_defaults}
+                logger.warning(
+                    "defect_classes not provided via station.yaml for model %s — "
+                    "using model registry defaults. Set defect_classes in station.yaml "
+                    "to suppress this warning.",
+                    model_key,
+                )
+            else:
+                logger.warning(
+                    "defect_classes is empty for model %s — TensorRTVisionProvider will "
+                    "use generic fallback names (defect_0, defect_1, ...). "
+                    "Check configs/wiko_taxonomy.yaml and station.yaml.",
+                    model_key,
+                )
+        elif len(merged_config["defect_classes"]) != 13:
+            logger.warning(
+                "defect_classes has %d entries for model %s — expected 13. "
+                "Check configs/wiko_taxonomy.yaml alignment.",
+                len(merged_config["defect_classes"]),
+                model_key,
+            )
+
         return TensorRTVisionProvider(spec, merged_config)
+
+    def _load_model_bundle(self, bundle_config: dict[str, Any]) -> dict[str, Any]:
+        """Load and validate model bundle from config.
+        
+        Args:
+            bundle_config: model_bundle section from station.yaml
+            
+        Returns:
+            Dict with loaded bundle components
+            
+        Raises:
+            ModelBundleError: If bundle is invalid or missing
+        """
+        bundle_path = Path(bundle_config["path"])
+        if not bundle_path.is_absolute():
+            bundle_path = self.model_dir / bundle_path
+        
+        # Resolve individual file paths
+        engine_path = bundle_path / bundle_config.get("engine", "model.engine")
+        labels_path = bundle_path / bundle_config.get("labels", "labels.json")
+        thresholds_path = bundle_path / bundle_config.get("thresholds", "thresholds.yaml")
+        metadata_path = bundle_path / bundle_config.get("metadata", "metadata.json")
+        
+        # Validate against canonical taxonomy if strict mode enabled
+        expected_classes = None
+        if bundle_config.get("strict_taxonomy", True):
+            expected_classes = self.config.get("defect_classes", _CANONICAL_DEFECT_CLASSES)
+        
+        return validate_bundle(
+            engine_path=engine_path,
+            labels_path=labels_path,
+            thresholds_path=thresholds_path,
+            metadata_path=metadata_path,
+            expected_classes=expected_classes,
+        )
 
     def resolve_language_provider(
         self,

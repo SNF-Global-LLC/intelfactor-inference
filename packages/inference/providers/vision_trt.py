@@ -44,10 +44,105 @@ class TensorRTVisionProvider(VisionProvider):
         self.engine = None
         self.context = None
         self.input_shape: tuple[int, ...] = (1, 3, 640, 640)  # default YOLO
-        self.confidence_threshold: float = config.get("confidence_threshold", 0.5) if config else 0.5
+        # Global fallback detection threshold — used when no per-class entry exists.
+        # Keep this low; per-class thresholds do the real filtering.
+        self.confidence_threshold: float = config.get("confidence_threshold", 0.25) if config else 0.25
         self.nms_threshold: float = config.get("nms_threshold", 0.45) if config else 0.45
-        self.defect_classes: list[str] = config.get("defect_classes", []) if config else []
         self.station_id: str = config.get("station_id", "unknown") if config else "unknown"
+        # Verdict routing thresholds (separate from detection filter threshold).
+        # Detections above fail_threshold → FAIL; between review and fail → REVIEW.
+        # Per CLAUDE.md: >0.85 auto-fail, 0.5–0.85 human verify.
+        self.fail_threshold: float = config.get("fail_threshold", 0.85) if config else 0.85
+        self.review_threshold: float = config.get("review_threshold", 0.50) if config else 0.50
+        
+        # Model bundle integration
+        # Priority: 1. model_bundle labels/thresholds 2. config defect_classes 3. fallback
+        self.model_version: str = config.get("model_version", "unknown") if config else "unknown"
+        self.model_name: str = config.get("model_name", model_spec.model_name) if config else model_spec.model_name
+        
+        # Load labels from model bundle or config
+        self.labels: dict[int, str] = config.get("labels", {}) if config else {}
+        self.defect_classes: list[str] = self._resolve_defect_classes(config)
+        
+        # Load per-class thresholds from model bundle or config
+        self.per_class_thresholds: dict[str, float] = self._load_per_class_thresholds(config)
+
+    def _resolve_defect_classes(self, config: dict[str, Any] | None) -> list[str]:
+        """Resolve defect class list from labels or config.
+        
+        Priority:
+          1. model_bundle labels (sorted by class_id)
+          2. config defect_classes
+          3. empty list (fallback)
+        """
+        if not config:
+            return []
+        
+        # If we have labels from model bundle, use them
+        if self.labels:
+            max_id = max(self.labels.keys())
+            classes = [self.labels.get(i, f"defect_{i}") for i in range(max_id + 1)]
+            logger.info("Loaded %d classes from model bundle labels", len(classes))
+            return classes
+        
+        # Fallback to config
+        classes = config.get("defect_classes", [])
+        if classes:
+            logger.debug("Using defect_classes from config (%d classes)", len(classes))
+        return classes
+
+    def _load_per_class_thresholds(self, config: dict[str, Any] | None) -> dict[str, float]:
+        """Load per-class thresholds from config or model bundle.
+
+        Priority:
+          1. config["thresholds"] from model bundle — highest priority
+          2. config["per_class_thresholds"] — inline dict
+          3. config["thresholds_path"] — path to YAML file
+          4. {} — fall back to self.confidence_threshold globally
+        """
+        if not config:
+            return {}
+
+        # Priority 1: thresholds from model bundle
+        bundle_thresholds = config.get("thresholds")
+        if isinstance(bundle_thresholds, dict) and bundle_thresholds:
+            logger.info(
+                "Loaded %d per-class thresholds from model bundle",
+                len(bundle_thresholds),
+            )
+            return {k: float(v) for k, v in bundle_thresholds.items()}
+
+        # Priority 2: inline per_class_thresholds
+        inline = config.get("per_class_thresholds")
+        if isinstance(inline, dict) and inline:
+            logger.debug("Loaded %d per-class thresholds from config", len(inline))
+            return {k: float(v) for k, v in inline.items()}
+
+        # Priority 3: YAML file path
+        thresholds_path = config.get("thresholds_path")
+        if thresholds_path:
+            path = Path(thresholds_path)
+            if path.exists():
+                try:
+                    import yaml
+                    with path.open() as f:
+                        data = yaml.safe_load(f)
+                    thresholds = data.get("thresholds", {})
+                    logger.info(
+                        "Loaded per-class thresholds from %s (%d classes)",
+                        path.name, len(thresholds),
+                    )
+                    return {k: float(v) for k, v in thresholds.items()}
+                except Exception as exc:
+                    logger.warning("Failed to load thresholds from %s: %s", thresholds_path, exc)
+            else:
+                logger.warning("thresholds_path not found: %s", thresholds_path)
+
+        return {}
+
+    def _get_class_threshold(self, class_name: str) -> float:
+        """Return the detection threshold for a given class name."""
+        return self.per_class_thresholds.get(class_name, self.confidence_threshold)
 
     def load(self) -> None:
         engine_path = Path(self.model_spec.model_path)
@@ -101,7 +196,8 @@ class TensorRTVisionProvider(VisionProvider):
             verdict=verdict,
             confidence=confidence,
             inference_ms=inference_ms,
-            model_version=self.model_spec.model_name,
+            model_version=self.model_version,
+            model_name=self.model_name,
         )
 
     def _trt_detect(self, frame: np.ndarray) -> list[Detection]:
@@ -188,8 +284,15 @@ class TensorRTVisionProvider(VisionProvider):
         class_ids = np.argmax(scores, axis=1)
         confidences = np.max(scores, axis=1)
 
-        # Filter by confidence threshold
-        mask = confidences >= self.confidence_threshold
+        # Apply per-class detection thresholds.
+        # Each box is kept only if its confidence meets the threshold for its class.
+        per_class_thresh = np.array([
+            self._get_class_threshold(
+                self.defect_classes[int(cid)] if int(cid) < len(self.defect_classes) else ""
+            )
+            for cid in class_ids
+        ])
+        mask = confidences >= per_class_thresh
         boxes = boxes[mask]
         class_ids = class_ids[mask]
         confidences = confidences[mask]
@@ -219,18 +322,22 @@ class TensorRTVisionProvider(VisionProvider):
         detections = []
         for i in indices:
             class_id = int(class_ids[i])
+            confidence = float(confidences[i])
             defect_type = self.defect_classes[class_id] if class_id < len(self.defect_classes) else f"defect_{class_id}"
+            threshold_used = self._get_class_threshold(defect_type)
 
             detection = Detection(
                 defect_type=defect_type,
-                confidence=float(confidences[i]),
+                confidence=confidence,
+                threshold_used=threshold_used,
+                model_version=self.model_version,
                 bbox=BoundingBox(
                     x=float(x1[i]),
                     y=float(y1[i]),
                     width=float(widths[i]),
                     height=float(heights[i]),
                 ),
-                severity=self._estimate_severity(defect_type, float(confidences[i])),
+                severity=self._estimate_severity(defect_type, confidence),
             )
             detections.append(detection)
 
@@ -295,30 +402,32 @@ class TensorRTVisionProvider(VisionProvider):
         return keep
 
     def _estimate_severity(self, defect_type: str, confidence: float) -> float:
+        """Estimate defect severity based on type and confidence.
+
+        Ranges are derived from configs/wiko_taxonomy.yaml severity_range fields.
+        Critical classes (AQL=0) have high floors; minor classes have low ceilings.
         """
-        Estimate defect severity based on type and confidence.
-        Uses severity ranges from wiko_taxonomy.yaml.
-        """
-        # Severity ranges from taxonomy (hardcoded for performance)
-        severity_ranges = {
-            "scratch_surface": (0.2, 0.9),
-            "scratch_edge": (0.4, 1.0),
-            "burr": (0.3, 0.8),
-            "pit_corrosion": (0.5, 1.0),
-            "discoloration": (0.2, 0.7),
-            "dent": (0.3, 0.9),
-            "crack": (0.7, 1.0),
-            "warp": (0.4, 1.0),
-            "handle_gap": (0.3, 0.8),
-            "handle_crack": (0.5, 1.0),
-            "logo_defect": (0.2, 0.6),
-            "dimension_out_of_spec": (0.4, 1.0),
-            "foreign_material": (0.2, 0.7),
+        # Canonical KMG Kyoto taxonomy severity ranges — (min, max)
+        # critical: edge_burr, edge_crack, surface_crack, etching_defect → floor ≥ 0.5
+        # minor: surface_discolor → ceiling 0.7
+        severity_ranges: dict[str, tuple[float, float]] = {
+            "blade_scratch":    (0.2, 0.9),
+            "grinding_mark":    (0.2, 0.7),
+            "surface_dent":     (0.3, 0.9),
+            "surface_crack":    (0.7, 1.0),
+            "weld_defect":      (0.3, 0.9),
+            "edge_burr":        (0.5, 1.0),
+            "edge_crack":       (0.7, 1.0),
+            "handle_defect":    (0.5, 1.0),
+            "bolster_gap":      (0.3, 0.8),
+            "etching_defect":   (0.4, 0.9),
+            "inclusion":        (0.2, 0.8),
+            "surface_discolor": (0.2, 0.7),
+            "overgrind":        (0.4, 1.0),
         }
 
         if defect_type in severity_ranges:
             min_sev, max_sev = severity_ranges[defect_type]
-            # Scale confidence to severity range
             return min_sev + (max_sev - min_sev) * confidence
 
         # Default: use confidence as severity
@@ -357,21 +466,25 @@ class TensorRTVisionProvider(VisionProvider):
 
     def _apply_rules(self, detections: list[Detection]) -> tuple[Verdict, float]:
         """
-        DefectIQ rules engine.
-        Applies configurable thresholds per sop_criterion.
+        DefectIQ rules engine — verdict routing based on detection confidence.
+
+        Routing (per CLAUDE.md):
+          > fail_threshold (default 0.85)   → FAIL  (auto-reject, high confidence)
+          > review_threshold (default 0.50) → REVIEW (human verify)
+          otherwise                         → PASS
+
+        Note: detections reaching this method have already passed per-class
+        detection thresholds in _parse_yolo_output. The routing thresholds
+        here are separate and intentionally higher.
         """
         if not detections:
             return Verdict.PASS, 1.0
 
         max_conf = max(d.confidence for d in detections)
 
-        # Escalation threshold from config
-        escalation_limit = self.config.get("escalation_limit", 0.05)
-        review_threshold = self.config.get("review_threshold", 0.7)
-
-        if max_conf >= self.confidence_threshold:
+        if max_conf >= self.fail_threshold:
             return Verdict.FAIL, max_conf
-        elif max_conf >= review_threshold:
+        elif max_conf >= self.review_threshold:
             return Verdict.REVIEW, max_conf
         else:
             return Verdict.PASS, 1.0 - max_conf

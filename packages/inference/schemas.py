@@ -73,6 +73,8 @@ class Detection:
     confidence: float
     bbox: BoundingBox
     severity: float = 0.0
+    threshold_used: float = 0.0  # Per-class threshold applied
+    model_version: str = ""  # Model version that made this detection
 
 
 @dataclass
@@ -87,7 +89,8 @@ class DetectionResult:
     verdict: Verdict = Verdict.PASS
     confidence: float = 0.0
     inference_ms: float = 0.0
-    model_version: str = ""
+    model_version: str = ""  # Version from model bundle metadata
+    model_name: str = ""  # Model name from bundle
     frame_ref: str = ""  # path to evidence frame
 
 
