@@ -1,0 +1,71 @@
+# IntelFactor — YOLO Training Configuration
+# Reference: training/README.md
+# Override individual keys at CLI: --override epochs=50 batch=16
+
+# ---------------------------------------------------------------------------
+# Model
+# ---------------------------------------------------------------------------
+model: yolov8m.pt          # main candidate; override to yolov8n.pt for sanity runs
+task: detect
+
+# ---------------------------------------------------------------------------
+# Dataset
+# ---------------------------------------------------------------------------
+data: datasets/combined/data.yaml   # relative to training/
+
+# ---------------------------------------------------------------------------
+# Training hyperparameters
+# ---------------------------------------------------------------------------
+epochs: 100
+batch: 16                  # reduce to 8 if OOM on smaller GPU
+imgsz: 640
+device: 0                  # GPU index; 'cpu' for smoke test
+workers: 8
+cache: ram                 # 'ram' | 'disk' | false
+
+# ---------------------------------------------------------------------------
+# Optimiser
+# ---------------------------------------------------------------------------
+optimizer: AdamW
+lr0: 0.001
+lrf: 0.01                  # final LR = lr0 * lrf
+momentum: 0.937
+weight_decay: 0.0005
+warmup_epochs: 5
+warmup_momentum: 0.8
+warmup_bias_lr: 0.1
+patience: 20              # early stopping: stop if no improvement after N epochs
+close_mosaic: 15          # disable mosaic augmentation in final N epochs for stability
+
+# ---------------------------------------------------------------------------
+# Augmentation (refer augmentations.yaml for albumentations pipeline)
+# ---------------------------------------------------------------------------
+augment: true
+hsv_h: 0.015
+hsv_s: 0.7
+hsv_v: 0.4
+degrees: 5.0
+translate: 0.1
+scale: 0.5
+shear: 2.0
+flipud: 0.0
+fliplr: 0.5
+mosaic: 1.0
+mixup: 0.1
+copy_paste: 0.1
+
+# ---------------------------------------------------------------------------
+# Validation
+# ---------------------------------------------------------------------------
+val: true
+iou: 0.6
+conf: 0.25                 # detection threshold during val (tune_threshold.py refines this)
+max_det: 300
+
+# ---------------------------------------------------------------------------
+# Output
+# ---------------------------------------------------------------------------
+project: runs              # relative to training/
+save_period: 10            # checkpoint every N epochs
+plots: true
+exist_ok: false            # fail if run name already exists — prevents accidental overwrites

@@ -88,6 +88,7 @@ def run_station():
         confidence_threshold=raw.get("confidence_threshold", 0.5),
         anomaly_check_interval_sec=raw.get("rca", {}).get("anomaly_check_interval_sec", 300),
         z_score_threshold=raw.get("rca", {}).get("z_score_threshold", 2.5),
+        defect_classes=raw.get("defect_classes", []),
         defect_taxonomy=raw.get("defect_taxonomy", {}),
         sop_map=raw.get("sop_map", {}),
         sop_context=raw.get("sop_context", {}),

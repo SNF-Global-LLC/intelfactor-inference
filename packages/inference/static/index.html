@@ -226,19 +226,19 @@ function fmtTime(ts) {
 
 // ── Defect Name ──
 const DEFECT_NAMES = {
-  scratch_surface: { zh: '表面刮痕', en: 'Surface Scratch' },
-  scratch_edge: { zh: '刀刃刮痕', en: 'Edge Scratch' },
+  scratch: { zh: '划痕', en: 'Scratch' },
+  grinding_mark: { zh: '研磨痕迹', en: 'Grinding Mark' },
+  dent: { zh: '凹痕/凹坑', en: 'Dent/Pit' },
+  weld_defect: { zh: '焊接缺陷', en: 'Weld Defect' },
+  edge_issue: { zh: '边缘缺陷', en: 'Edge Defect' },
+  overgrind: { zh: '过磨', en: 'Overgrind' },
+  chip: { zh: '崩口', en: 'Chip' },
   burr: { zh: '毛刺', en: 'Burr' },
-  pit_corrosion: { zh: '点蚀', en: 'Pit Corrosion' },
-  discoloration: { zh: '变色', en: 'Discoloration' },
-  dent: { zh: '凹痕', en: 'Dent' },
   crack: { zh: '裂纹', en: 'Crack' },
-  warp: { zh: '翘曲', en: 'Warp' },
-  handle_gap: { zh: '刀柄间隙', en: 'Handle Gap' },
-  handle_crack: { zh: '刀柄裂纹', en: 'Handle Crack' },
-  logo_defect: { zh: '商标缺陷', en: 'Logo Defect' },
-  dimension_out_of_spec: { zh: '尺寸超差', en: 'Out of Spec' },
-  foreign_material: { zh: '异物', en: 'Foreign Material' },
+  surface_roughness: { zh: '表面粗糙', en: 'Roughness' },
+  contamination: { zh: '污染/夹杂', en: 'Contamination' },
+  lighting_artifact: { zh: '光照伪影', en: 'Lighting Artifact' },
+  normal_texture: { zh: '正常纹理', en: 'Normal Texture' },
 };
 function defectName(type) {
   const d = DEFECT_NAMES[type];

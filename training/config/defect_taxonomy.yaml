@@ -1,0 +1,225 @@
+# IntelFactor — Canonical Defect Taxonomy
+# KMG Trading Kyoto Specifications — QC Inspection Plan
+#
+# THIS IS THE SINGLE SOURCE OF TRUTH for defect class definitions.
+# All other configs (station.yaml, wiko_taxonomy.yaml, taxonomy.py) derive from this.
+# Do NOT add or rename classes here without updating ALL downstream consumers.
+#
+# Fields per class:
+#   id:          YOLO class ID (0-based, must be sequential 0-12)
+#   name:        canonical snake_case identifier used in code and label files
+#   kyoto_ref:   Kyoto QC inspection plan checkpoint reference
+#   aql:         AQL severity level (critical=0, major=1, minor=2.5)
+#   severity:    human label (critical | major | minor)
+#   confidence_threshold: default inference threshold (tuned by tune_threshold.py per run)
+#   fp_risk:     high|medium|low — classes with high FP risk need higher thresholds
+#   sources:     public dataset → source class name mapping for merge_datasets.py
+#   bilingual:
+#     en: operator-facing English label
+#     zh: operator-facing Chinese label
+#
+# Hard negatives are listed at the bottom — these are normal surface features
+# the model must learn to IGNORE.
+
+classes:
+  - id: 0
+    name: blade_scratch
+    kyoto_ref: "4.6.1"
+    aql: 1
+    severity: major
+    confidence_threshold: 0.60
+    fp_risk: high   # satin striations are visually similar
+    bilingual:
+      en: "Blade Scratch"
+      zh: "刀片划痕"
+    sources:
+      neu-det: Scratches
+      roboflow-gscr: gScratch
+
+  - id: 1
+    name: grinding_mark
+    kyoto_ref: "4.6.1"
+    aql: 1
+    severity: major
+    confidence_threshold: 0.65
+    fp_risk: high   # confused with normal grinding pattern / satin finish
+    bilingual:
+      en: "Grinding Mark"
+      zh: "研磨痕迹"
+    sources:
+      gc10: Water_Spot   # proximal source — surface treatment artifacts
+
+  - id: 2
+    name: surface_dent
+    kyoto_ref: "4.6.1"
+    aql: 1
+    severity: major
+    confidence_threshold: 0.55
+    fp_risk: medium
+    bilingual:
+      en: "Surface Dent"
+      zh: "表面凹痕"
+    sources:
+      neu-det: Pitted_Surface
+
+  - id: 3
+    name: surface_crack
+    kyoto_ref: "4.6.1"
+    aql: 0
+    severity: critical
+    confidence_threshold: 0.40
+    fp_risk: low
+    bilingual:
+      en: "Surface Crack"
+      zh: "表面裂纹"
+    sources:
+      neu-det: Crazing
+      gc10: Crease
+
+  - id: 4
+    name: weld_defect
+    kyoto_ref: "4.6.2"
+    aql: 1
+    severity: major
+    confidence_threshold: 0.55
+    fp_risk: medium   # normal weld seam can resemble defect weld line
+    bilingual:
+      en: "Weld Defect"
+      zh: "焊接缺陷"
+    sources:
+      gc10: Welding_Line
+
+  - id: 5
+    name: edge_burr
+    kyoto_ref: "4.6.8"
+    aql: 0
+    severity: critical
+    confidence_threshold: 0.45
+    fp_risk: low
+    bilingual:
+      en: "Edge Burr"
+      zh: "刃口毛刺"
+    sources: {}   # no direct public dataset equivalent
+
+  - id: 6
+    name: edge_crack
+    kyoto_ref: "4.6.8"
+    aql: 0
+    severity: critical
+    confidence_threshold: 0.35
+    fp_risk: low
+    bilingual:
+      en: "Edge Crack"
+      zh: "刃口裂纹"
+    sources: {}
+
+  - id: 7
+    name: handle_defect
+    kyoto_ref: "4.6.4"
+    aql: 1
+    severity: major
+    confidence_threshold: 0.50
+    fp_risk: medium
+    bilingual:
+      en: "Handle Defect"
+      zh: "刀柄缺陷"
+    sources: {}
+
+  - id: 8
+    name: bolster_gap
+    kyoto_ref: "4.6.3"
+    aql: 1
+    severity: major
+    confidence_threshold: 0.50
+    fp_risk: medium
+    bilingual:
+      en: "Bolster Gap"
+      zh: "护手间隙"
+    sources: {}
+
+  - id: 9
+    name: etching_defect
+    kyoto_ref: "4.6.9"
+    aql: 0
+    severity: critical
+    confidence_threshold: 0.45
+    fp_risk: low
+    bilingual:
+      en: "Etching / Logo Defect"
+      zh: "蚀刻/商标缺陷"
+    sources: {}
+
+  - id: 10
+    name: inclusion
+    kyoto_ref: "4.6.1"
+    aql: 1
+    severity: major
+    confidence_threshold: 0.50
+    fp_risk: medium
+    bilingual:
+      en: "Inclusion / Contamination"
+      zh: "夹杂物/污染"
+    sources:
+      neu-det: Inclusion
+      gc10: Inclusion
+
+  - id: 11
+    name: surface_discolor
+    kyoto_ref: "4.6.1"
+    aql: 2.5
+    severity: minor
+    confidence_threshold: 0.60
+    fp_risk: high   # hammer finish boundary often misclassified as discolor
+    bilingual:
+      en: "Surface Discoloration"
+      zh: "表面变色"
+    sources:
+      neu-det: Patches
+      gc10: Oil_Spot
+      gc10-2: Rolled-in_Scale
+
+  - id: 12
+    name: overgrind
+    kyoto_ref: "4.6.5"
+    aql: 1
+    severity: major
+    confidence_threshold: 0.55
+    fp_risk: medium
+    bilingual:
+      en: "Over-grind / Dimensional Error"
+      zh: "过磨/尺寸偏差"
+    sources: {}
+
+# ---------------------------------------------------------------------------
+# Hard negatives — normal surface features the model must learn to IGNORE.
+# These are the primary cause of false positives in the field.
+# All hard negative training images get empty label files (YOLO: no detections).
+# ---------------------------------------------------------------------------
+hard_negatives:
+  - name: hammer_finish_texture
+    description_en: "Regular dimple pattern from hammer/tsuchime finish — NOT a dent or inclusion"
+    description_zh: "锤纹(槌目)表面肌理 — 非凹坑或夹杂物"
+
+  - name: satin_finish_striations
+    description_en: "Parallel lines from satin/brushed finish — NOT a blade scratch or grinding mark"
+    description_zh: "缎面/拉丝表面纹路 — 非划痕或研磨痕"
+
+  - name: normal_weld_seam
+    description_en: "Clean, in-spec weld line at blade-bolster junction — NOT a weld defect"
+    description_zh: "合格焊缝 — 非焊接缺陷"
+
+  - name: normal_grinding_pattern
+    description_en: "Uniform radial or directional grinding lines — NOT a grinding mark defect"
+    description_zh: "均匀研磨纹路 — 非研磨缺陷"
+
+  - name: hammer_finish_boundary
+    description_en: "Edge of hammer finish zone meeting flat area — NOT a surface crack or discoloration"
+    description_zh: "锤纹区域边界 — 非裂纹或变色"
+
+# ---------------------------------------------------------------------------
+# AQL reference (ANSI/ASQ Z1.4)
+# ---------------------------------------------------------------------------
+aql_levels:
+  critical: 0       # Zero defects accepted — safety/legal liability
+  major: 1.0        # ≤1% defect rate accepted
+  minor: 2.5        # ≤2.5% defect rate accepted

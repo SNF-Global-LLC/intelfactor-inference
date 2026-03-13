@@ -46,6 +46,10 @@ class StationConfig:
     vision_model_override: str | None = None
     language_model_override: str | None = None
     confidence_threshold: float = 0.5
+    # Defect class names (0-based, must match YOLO engine output order).
+    # Loaded from station.yaml defect_classes.
+    # Falls back to _CANONICAL_DEFECT_CLASSES in resolver.py if empty.
+    defect_classes: list[str] = field(default_factory=list)
 
     # RCA
     anomaly_check_interval_sec: int = 300  # 5 minutes
@@ -108,9 +112,15 @@ class StationRuntime:
         logger.info("Device: %s (%s, %dMB VRAM)", caps.device_class.value, caps.gpu_name, caps.vram_mb)
 
         # Initialize providers
+        # Pass defect_classes so TensorRTVisionProvider maps class IDs → names correctly.
+        # station.yaml defect_classes takes precedence; resolver falls back to canonical defaults.
+        vision_provider_config: dict[str, Any] = {"station_id": self.config.station_id}
+        if self.config.defect_classes:
+            vision_provider_config["defect_classes"] = self.config.defect_classes
+
         self.vision = resolver.resolve_vision_provider(
             override_model=self.config.vision_model_override,
-            provider_config={"station_id": self.config.station_id},
+            provider_config=vision_provider_config,
         )
         self.vision.load()
 
@@ -181,7 +191,7 @@ class StationRuntime:
         try:
             from packages.inference.evidence import EvidenceWriter
             evidence_dir = data_dir / "evidence"
-            max_disk_gb = getattr(config, "max_evidence_disk_gb", 50.0)
+            max_disk_gb = getattr(self.config, "max_evidence_disk_gb", 50.0)
             self.evidence_writer = EvidenceWriter(
                 evidence_dir=str(evidence_dir),
                 max_disk_gb=max_disk_gb,

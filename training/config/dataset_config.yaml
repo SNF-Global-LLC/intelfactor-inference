@@ -1,0 +1,66 @@
+# IntelFactor — Dataset Source Configuration
+# Class maps translate source dataset labels → canonical taxonomy names.
+# Canonical names are defined in training/config/defect_taxonomy.yaml.
+# Unmapped source classes are skipped during merge.
+
+# ---------------------------------------------------------------------------
+# Roboflow datasets
+# Each project may specify its own workspace; falls back to the default below.
+# ---------------------------------------------------------------------------
+roboflow:
+  workspace: intelfactor   # default workspace (used when project has no workspace key)
+
+  projects:
+    - name: neu_det
+      workspace: metal-defect              # public universe dataset
+      project: neu-surface-defect
+      version: 1
+      format: yolov8
+      class_map:
+        crazing:        surface_crack
+        inclusion:      inclusion
+        patches:        surface_discolor
+        pittedsurface:  surface_dent
+        rolled-in_scale: surface_discolor
+        scratches:      blade_scratch
+
+# ---------------------------------------------------------------------------
+# Hard negatives: kitchen knife images (whole-knife, no defect labels → background)
+# Downloaded separately as hard negatives source
+# ---------------------------------------------------------------------------
+hard_negative_sources:
+  - workspace: intelfactor
+    project: kitchen-knife-ylszj
+    version: 1
+    format: yolov8
+
+# ---------------------------------------------------------------------------
+# Kaggle datasets (manual download)
+# Place downloaded ZIPs in datasets/raw/kaggle/ then run merge_datasets.py
+# ---------------------------------------------------------------------------
+kaggle:
+  datasets: []
+
+# ---------------------------------------------------------------------------
+# Manual / custom datasets
+# Place YOLO-format datasets in datasets/raw/custom/<name>/
+# Each must have train/images/, train/labels/, val/images/, val/labels/
+# and a data.yaml with class names.
+# ---------------------------------------------------------------------------
+manual:
+  sources: []
+
+# ---------------------------------------------------------------------------
+# Hard negatives
+# 20% of training images should be background (drives down FP rate)
+# ---------------------------------------------------------------------------
+hard_negatives:
+  target_ratio: 0.20
+
+# ---------------------------------------------------------------------------
+# Split ratios (applied during merge for sources that don't pre-split)
+# ---------------------------------------------------------------------------
+splits:
+  train: 0.75
+  val: 0.15
+  test: 0.10

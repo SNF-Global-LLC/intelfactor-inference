@@ -1,0 +1,44 @@
+# IntelFactor — Albumentations augmentation pipeline
+# Used by train.py when augment: true and this file is present.
+# These augmentations are tuned for metal surface defect imagery:
+#   - lighting variation from factory floor
+#   - minor motion blur from conveyor belt
+#   - no heavy colour shifts (metal surface hue is diagnostic)
+
+transform:
+  - __class_fullname__: albumentations.augmentations.transforms.RandomBrightnessContrast
+    brightness_limit: 0.2
+    contrast_limit: 0.2
+    p: 0.5
+
+  - __class_fullname__: albumentations.augmentations.transforms.GaussianBlur
+    blur_limit: [3, 5]
+    p: 0.2
+
+  - __class_fullname__: albumentations.augmentations.transforms.MotionBlur
+    blur_limit: 5
+    p: 0.1
+
+  - __class_fullname__: albumentations.augmentations.transforms.GaussNoise
+    var_limit: [10.0, 50.0]
+    p: 0.3
+
+  - __class_fullname__: albumentations.augmentations.geometric.transforms.ShiftScaleRotate
+    shift_limit: 0.05
+    scale_limit: 0.1
+    rotate_limit: 10
+    border_mode: 0
+    p: 0.4
+
+  - __class_fullname__: albumentations.augmentations.transforms.ImageCompression
+    quality_lower: 75
+    quality_upper: 100
+    p: 0.2
+
+  # Simulate partial occlusion (grease, debris) via random rectangular dropout
+  - __class_fullname__: albumentations.augmentations.dropout.coarse_dropout.CoarseDropout
+    max_holes: 4
+    max_height: 32
+    max_width: 32
+    fill_value: 128
+    p: 0.15
