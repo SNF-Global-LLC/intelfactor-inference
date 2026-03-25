@@ -33,6 +33,13 @@ class OperatorAction(str, Enum):
     PENDING = "pending"
 
 
+class SyncStatus(str, Enum):
+    PENDING = "pending"
+    UPLOADING = "uploading"
+    SYNCED = "synced"
+    FAILED = "failed"
+
+
 class DeviceClass(str, Enum):
     """Hardware capability tiers."""
     ORIN_NANO = "orin_nano"       # 8GB, 67 TOPS
@@ -92,6 +99,58 @@ class DetectionResult:
     model_version: str = ""  # Version from model bundle metadata
     model_name: str = ""  # Model name from bundle
     frame_ref: str = ""  # path to evidence frame
+
+
+# ── Inspection Event (edge-to-cloud handoff) ──────────────────────────
+
+@dataclass
+class InspectionEvent:
+    """
+    One discrete inspection transaction.
+    This is the canonical record produced by the edge station and synced to cloud.
+    """
+    inspection_id: str = field(default_factory=lambda: f"insp_{datetime.now(tz=timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}")
+    timestamp: datetime = field(default_factory=lambda: datetime.now(tz=timezone.utc).replace(tzinfo=None))
+    station_id: str = ""
+    workspace_id: str = ""
+
+    # Product
+    product_id: str = ""
+    operator_id: str = ""
+
+    # Verdict
+    decision: Verdict = Verdict.PASS
+    confidence: float = 0.0
+    detections: list[Detection] = field(default_factory=list)
+    num_detections: int = 0
+
+    # Evidence paths (local on Jetson)
+    image_original_path: str = ""
+    image_annotated_path: str = ""
+    report_path: str = ""
+
+    # Evidence URLs (populated after cloud sync)
+    image_original_url: str = ""
+    image_annotated_url: str = ""
+
+    # Model
+    model_version: str = ""
+    model_name: str = ""
+
+    # Timing
+    capture_ms: float = 0.0
+    inference_ms: float = 0.0
+    total_ms: float = 0.0
+
+    # Operator feedback (filled later)
+    accepted: bool | None = None
+    rejection_reason: str = ""
+    notes: str = ""
+
+    # Sync
+    sync_status: SyncStatus = SyncStatus.PENDING
+    sync_error: str = ""
+    synced_at: datetime | None = None
 
 
 # ── RCA Types ──────────────────────────────────────────────────────────

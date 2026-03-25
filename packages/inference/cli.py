@@ -98,22 +98,76 @@ def run_station():
     runtime = StationRuntime(station_config, mode=mode)
     runtime.start()
 
-    # Optionally start camera ingest
-    if not args.no_camera and raw.get("camera", {}).get("source"):
-        from packages.inference.ingest import CameraConfig, CameraIngest, CameraProtocol
+    # ── Camera / Capture ──────────────────────────────────────────
+    cam_cfg = raw.get("camera", {})
+    camera_enabled = cam_cfg.get("enabled", False) and not args.no_camera
+    camera_protocol = cam_cfg.get("protocol", "none")
 
-        cam_cfg = raw.get("camera", {})
-        camera_config = CameraConfig(
-            source=cam_cfg.get("source", ""),
-            protocol=CameraProtocol(cam_cfg.get("protocol", "rtsp")),
-            station_id=station_config.station_id,
-            fps_target=cam_cfg.get("fps_target", 30),
+    if camera_enabled:
+        logger.info("Camera enabled: protocol=%s", camera_protocol)
+        if camera_protocol == "pyspin":
+            serial = cam_cfg.get("serial_number", "auto")
+            logger.info("  PySpin serial: %s", serial)
+        elif camera_protocol == "file":
+            test_img = cam_cfg.get("test_image", "(not set)")
+            logger.info("  Test image: %s", test_img)
+        elif cam_cfg.get("source"):
+            logger.info("  Source: %s", cam_cfg.get("source"))
+
+        # Initialize capture backend and attach to runtime for /api/inspect
+        try:
+            from packages.inference.capture import get_capture
+            capture = get_capture(cam_cfg)
+            runtime._capture = capture
+            logger.info("Capture backend ready: %s", camera_protocol)
+        except Exception as exc:
+            logger.error("Capture init failed: %s", exc)
+            runtime._capture = None
+
+        # Legacy continuous ingest (only for rtsp/usb/gige protocols)
+        if camera_protocol in ("rtsp", "usb", "gige") and cam_cfg.get("source"):
+            from packages.inference.ingest import CameraConfig as IngestCameraConfig, CameraIngest, CameraProtocol
+            camera_config = IngestCameraConfig(
+                source=cam_cfg.get("source", ""),
+                protocol=CameraProtocol(camera_protocol),
+                station_id=station_config.station_id,
+                fps_target=cam_cfg.get("fps_target", 30),
+            )
+            ingest = CameraIngest(camera_config, on_frame=lambda frame, meta: runtime.process_frame(frame))
+            ingest.start()
+            runtime._ingest = ingest
+            logger.info("Continuous ingest started: %s", camera_config.source)
+    else:
+        logger.info("Camera disabled (--no-camera or camera.enabled=false)")
+        runtime._capture = None
+
+    # ── Inspection Store + Sync Worker ─────────────────────────────
+    from pathlib import Path as _Path
+    from packages.inference.storage.inspection_store import InspectionStore
+
+    inspections_db = _Path(station_config.data_dir) / "inspections.db"
+    inspection_store = InspectionStore(db_path=inspections_db)
+    runtime._inspection_store = inspection_store
+    logger.info("Inspection store ready: %s", inspections_db)
+
+    # Start sync worker if cloud backend is configured
+    cloud_api_url = os.environ.get("CLOUD_API_URL", "")
+    cloud_api_key = os.environ.get("CLOUD_API_KEY", "")
+    if cloud_api_url:
+        from packages.inference.sync_inspections import InspectionSyncWorker
+        evidence_dir = _Path(station_config.data_dir) / "evidence"
+        sync_worker = InspectionSyncWorker(
+            inspection_store=inspection_store,
+            evidence_dir=evidence_dir,
+            cloud_api_url=cloud_api_url,
+            cloud_api_key=cloud_api_key,
+            sync_interval_sec=int(os.environ.get("SYNC_INTERVAL_SEC", "30")),
         )
-
-        ingest = CameraIngest(camera_config, on_frame=lambda frame, meta: runtime.process_frame(frame))
-        ingest.start()
-        runtime._ingest = ingest  # attach for stats
-        logger.info("Camera ingest started: %s", camera_config.source)
+        sync_worker.start()
+        runtime._sync_worker = sync_worker
+    else:
+        logger.info("Inspection sync disabled (CLOUD_API_URL not set)")
+        runtime._sync_worker = None
 
     # Start API server in background thread
     from packages.inference.api_v2 import create_app

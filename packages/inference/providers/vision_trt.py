@@ -228,12 +228,42 @@ class TensorRTVisionProvider(VisionProvider):
         return []
 
     def _preprocess(self, frame: np.ndarray) -> np.ndarray:
-        """Resize and normalize frame for YOLO input."""
+        """
+        Resize and normalize frame for YOLO input.
+        Handles Mono8 (single channel) and BGR (3 channel) inputs.
+        Uses letterbox resize to preserve aspect ratio.
+        """
         import cv2
 
-        h, w = self.input_shape[2], self.input_shape[3]
-        resized = cv2.resize(frame, (w, h))
-        blob = resized.astype(np.float32) / 255.0
+        # Mono8 (single channel) -> 3-channel BGR for YOLO
+        if len(frame.shape) == 2:
+            frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+        elif frame.shape[2] == 1:
+            frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+
+        target_h, target_w = self.input_shape[2], self.input_shape[3]
+
+        # Letterbox resize: preserve aspect ratio, pad with gray (114)
+        src_h, src_w = frame.shape[:2]
+        scale = min(target_w / src_w, target_h / src_h)
+        new_w = int(src_w * scale)
+        new_h = int(src_h * scale)
+
+        resized = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+
+        # Center-pad to target size
+        pad_top = (target_h - new_h) // 2
+        pad_left = (target_w - new_w) // 2
+        letterboxed = np.full((target_h, target_w, 3), 114, dtype=np.uint8)
+        letterboxed[pad_top:pad_top + new_h, pad_left:pad_left + new_w] = resized
+
+        # Store letterbox params for coordinate de-scaling
+        self._letterbox_scale = scale
+        self._letterbox_pad = (pad_left, pad_top)
+
+        # BGR -> RGB, normalize to 0-1 float32, HWC -> CHW
+        blob = cv2.cvtColor(letterboxed, cv2.COLOR_BGR2RGB)
+        blob = blob.astype(np.float32) / 255.0
         blob = blob.transpose(2, 0, 1)  # HWC -> CHW
         blob = np.expand_dims(blob, axis=0)  # add batch dim
         return np.ascontiguousarray(blob)
@@ -300,17 +330,16 @@ class TensorRTVisionProvider(VisionProvider):
         if len(boxes) == 0:
             return []
 
-        # Convert cx, cy, w, h to x, y, w, h and scale to original image
-        orig_h, orig_w = orig_shape[:2]
-        input_h, input_w = self.input_shape[2], self.input_shape[3]
-        scale_x = orig_w / input_w
-        scale_y = orig_h / input_h
+        # Convert cx, cy, w, h to x, y, w, h and de-scale from letterbox
+        lb_scale = getattr(self, "_letterbox_scale", 1.0)
+        lb_pad = getattr(self, "_letterbox_pad", (0, 0))
+        pad_x, pad_y = lb_pad
 
-        # Convert center format to corner format
-        x_centers = boxes[:, 0] * scale_x
-        y_centers = boxes[:, 1] * scale_y
-        widths = boxes[:, 2] * scale_x
-        heights = boxes[:, 3] * scale_y
+        # Remove letterbox padding, then un-scale to original image coordinates
+        x_centers = (boxes[:, 0] - pad_x) / lb_scale
+        y_centers = (boxes[:, 1] - pad_y) / lb_scale
+        widths = boxes[:, 2] / lb_scale
+        heights = boxes[:, 3] / lb_scale
 
         x1 = x_centers - widths / 2
         y1 = y_centers - heights / 2

@@ -17,7 +17,12 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-def create_app(runtime: Any = None) -> Any:
+def create_app(
+    runtime: Any = None,
+    sensor_service: Any = None,
+    maintenance_iq: Any = None,
+    machine_health_config: dict[str, Any] | None = None,
+) -> Any:
     """
     Create Flask app for station API.
     Pass in a running StationRuntime for live data.
@@ -64,6 +69,13 @@ def create_app(runtime: Any = None) -> Any:
         from flask import send_from_directory
         static_dir = os.path.join(os.path.dirname(__file__), "static")
         return send_from_directory(static_dir, "index.html")
+
+    @app.route("/inspect", methods=["GET"])
+    def inspect_page():
+        """Serve the manual QC inspection page."""
+        from flask import send_from_directory
+        static_dir = os.path.join(os.path.dirname(__file__), "static")
+        return send_from_directory(static_dir, "inspect.html")
 
     # ── Health ──────────────────────────────────────────────────────
 
@@ -368,7 +380,160 @@ def create_app(runtime: Any = None) -> Any:
         stats = app.runtime.pipeline.recommender.get_triple_stats()
         return jsonify(stats)
 
+    # ── Inspection (Manual QC Station) ────────────────────────────
+
+    @app.route("/api/inspect", methods=["POST"])
+    def inspect():
+        """
+        Trigger a single inspection transaction.
+        Thin route: parse input, call service, return JSON.
+
+        Body (optional): {"product_id": "...", "operator_id": "...", "workspace_id": "..."}
+        """
+        from packages.inference.inspection import run_inspection
+
+        if not app.runtime:
+            return jsonify({"error": "Runtime not initialized"}), 503
+
+        metadata = request.get_json(silent=True) or {}
+        result = run_inspection(app.runtime, metadata)
+
+        if result.get("verdict") == "ERROR":
+            return jsonify(result), 500
+
+        return jsonify(result)
+
+    @app.route("/api/inspect/<inspection_id>/feedback", methods=["POST"])
+    def inspect_feedback(inspection_id):
+        """
+        Record operator feedback on an inspection result.
+        Body: {"action": "accepted"|"rejected", "operator_id": "...", "reason": "...", "notes": "..."}
+        """
+        data = request.get_json()
+        if not data or "action" not in data:
+            return jsonify({"error": "Missing action field"}), 400
+
+        action = data["action"]
+        accepted = action == "accepted"
+        operator_id = data.get("operator_id", "")
+        reason = data.get("reason", "")
+        notes = data.get("notes", "")
+
+        # Persist to inspection store
+        store = getattr(app.runtime, "_inspection_store", None) if app.runtime else None
+        if store:
+            updated = store.update_feedback(
+                inspection_id, accepted=accepted,
+                operator_id=operator_id, reason=reason, notes=notes,
+            )
+            if not updated:
+                return jsonify({"error": "Inspection not found"}), 404
+
+        return jsonify({
+            "status": "recorded",
+            "inspection_id": inspection_id,
+            "action": action,
+        })
+
+    @app.route("/api/inspections", methods=["GET"])
+    def list_inspections():
+        """
+        List inspection events with optional filters.
+        Query params: station_id, decision, sync_status, limit, offset
+        """
+        store = getattr(app.runtime, "_inspection_store", None) if app.runtime else None
+        if not store:
+            return jsonify({"inspections": [], "total": 0}), 200
+
+        events = store.list_inspections(
+            station_id=request.args.get("station_id"),
+            decision=request.args.get("decision"),
+            sync_status=request.args.get("sync_status"),
+            limit=int(request.args.get("limit", 50)),
+            offset=int(request.args.get("offset", 0)),
+        )
+
+        return jsonify({
+            "inspections": [_inspection_to_dict(e) for e in events],
+            "count": len(events),
+        })
+
+    @app.route("/api/inspections/<inspection_id>", methods=["GET"])
+    def get_inspection(inspection_id):
+        """Get a single inspection event by ID."""
+        store = getattr(app.runtime, "_inspection_store", None) if app.runtime else None
+        if not store:
+            return jsonify({"error": "Inspection store not available"}), 503
+
+        event = store.get(inspection_id)
+        if not event:
+            return jsonify({"error": "Not found"}), 404
+
+        return jsonify(_inspection_to_dict(event))
+
+    @app.route("/api/inspections/stats", methods=["GET"])
+    def inspection_stats():
+        """Get inspection store statistics."""
+        store = getattr(app.runtime, "_inspection_store", None) if app.runtime else None
+        if not store:
+            return jsonify({}), 200
+        return jsonify(store.get_stats())
+
+    @app.route("/api/inspections/sync", methods=["GET"])
+    def inspection_sync_stats():
+        """Get sync worker statistics."""
+        worker = getattr(app.runtime, "_sync_worker", None) if app.runtime else None
+        if not worker:
+            return jsonify({"running": False, "message": "Sync worker not configured"}), 200
+        return jsonify(worker.get_stats())
+
     return app
+
+
+def _inspection_to_dict(event: Any) -> dict[str, Any]:
+    """Convert an InspectionEvent to a JSON-serializable dict."""
+    detections = []
+    for d in (event.detections or []):
+        detections.append({
+            "defect_type": d.defect_type,
+            "confidence": round(d.confidence, 4),
+            "severity": round(d.severity, 4),
+            "bbox": {
+                "x": round(d.bbox.x, 1),
+                "y": round(d.bbox.y, 1),
+                "width": round(d.bbox.width, 1),
+                "height": round(d.bbox.height, 1),
+            },
+        })
+
+    return {
+        "inspection_id": event.inspection_id,
+        "timestamp": event.timestamp.isoformat() if event.timestamp else "",
+        "station_id": event.station_id,
+        "workspace_id": event.workspace_id,
+        "product_id": event.product_id,
+        "operator_id": event.operator_id,
+        "decision": event.decision.value if hasattr(event.decision, "value") else event.decision,
+        "confidence": round(event.confidence, 4),
+        "detections": detections,
+        "num_detections": event.num_detections,
+        "image_original_path": event.image_original_path,
+        "image_annotated_path": event.image_annotated_path,
+        "image_original_url": event.image_original_url,
+        "image_annotated_url": event.image_annotated_url,
+        "model_version": event.model_version,
+        "model_name": event.model_name,
+        "timing": {
+            "capture_ms": round(event.capture_ms, 1),
+            "inference_ms": round(event.inference_ms, 1),
+            "total_ms": round(event.total_ms, 1),
+        },
+        "accepted": event.accepted,
+        "rejection_reason": event.rejection_reason,
+        "notes": event.notes,
+        "sync_status": event.sync_status.value if hasattr(event.sync_status, "value") else event.sync_status,
+        "synced_at": event.synced_at.isoformat() if event.synced_at else None,
+    }
 
 
 def run_api(runtime: Any = None, host: str = "0.0.0.0", port: int = 8080) -> None:

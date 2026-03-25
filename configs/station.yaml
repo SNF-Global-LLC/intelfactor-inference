@@ -15,6 +15,22 @@ data_dir: /opt/intelfactor/data
 model_dir: /opt/intelfactor/models
 edge_yaml_path: /opt/intelfactor/config/edge.yaml
 
+# ── Camera ─────────────────────────────────────────────────────────────
+# protocol: pyspin (FLIR Blackfly S via Spinnaker SDK)
+#           file   (load test image from disk — for dev without hardware)
+camera:
+  enabled: true
+  protocol: "file"                # Change to "pyspin" on Jetson with FLIR camera
+  serial_number: "25423789"       # FLIR Blackfly S serial (used when protocol=pyspin)
+  pixel_format: "Mono8"
+  width: 1920
+  height: 1200
+  exposure_auto: true
+  gain: 10.0
+  frame_rate: 30.0
+  source: null                    # reserved for future v4l2/rtsp
+  test_image: null                # path to test image (used when protocol=file)
+
 # ── Vision Inference ───────────────────────────────────────────────────
 # Leave blank for auto-detection based on hardware.
 # Options: yolov8n_trt, yolov8s_trt, yolo26_trt
@@ -40,19 +56,19 @@ model_bundle:
   strict_taxonomy: true            # Enforce exact match with defect_classes below
 # Canonical source: configs/wiko_taxonomy.yaml — key order = model class IDs — do not reorder
 defect_classes:
-  - blade_scratch       # 0  major   4.6.1
-  - grinding_mark       # 1  major   4.6.1
-  - surface_dent        # 2  major   4.6.1
-  - surface_crack       # 3  critical 4.6.1
-  - weld_defect         # 4  major   4.6.2
-  - edge_burr           # 5  critical 4.6.8
-  - edge_crack          # 6  critical 4.6.8
-  - handle_defect       # 7  major   4.6.4
-  - bolster_gap         # 8  major   4.6.3
-  - etching_defect      # 9  critical 4.6.9
-  - inclusion           # 10 major   4.6.1
-  - surface_discolor    # 11 minor   4.6.1
-  - overgrind           # 12 major   4.6.5
+  - scratch_surface     # 0  major   4.6.1
+  - scratch_edge        # 1  major   4.6.1
+  - burr                # 2  critical 4.6.8
+  - pit_corrosion       # 3  major   4.6.1
+  - discoloration       # 4  minor   4.6.1
+  - dent                # 5  major   4.6.1
+  - crack               # 6  critical 4.6.1
+  - warp                # 7  major   4.6.5
+  - handle_gap          # 8  major   4.6.3
+  - handle_crack        # 9  critical 4.6.4
+  - logo_defect         # 10 minor   4.6.9
+  - dimension_out_of_spec # 11 critical 4.6.5
+  - foreign_material    # 12 major   4.6.1
 
 # ── Language Model (RCA) ──────────────────────────────────────────────
 # Leave blank for auto-detection.
