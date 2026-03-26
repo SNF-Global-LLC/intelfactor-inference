@@ -2,7 +2,7 @@
 
 ## Overview
 
-IntelFactor is an edge-first industrial quality inspection platform that runs entirely on NVIDIA edge devices with optional cloud synchronization. The system performs real-time defect detection, root cause analysis, and closed-loop learning from operator feedback.
+IntelFactor is an edge-first industrial quality inspection platform that runs entirely on NVIDIA edge devices with optional cloud synchronization. The system performs real-time defect detection, root cause analysis, and continuous learning from operator feedback.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐

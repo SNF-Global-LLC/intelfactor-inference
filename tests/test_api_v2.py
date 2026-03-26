@@ -22,6 +22,7 @@ def app():
         # Set environment variables
         os.environ["STORAGE_MODE"] = "local"
         os.environ["SQLITE_DB_PATH"] = db_path
+        os.environ["DB_PATH"] = db_path
         os.environ["EVIDENCE_DIR"] = evidence_dir
 
         # Reset singletons
@@ -38,6 +39,7 @@ def app():
 
         # Cleanup
         os.environ.pop("SQLITE_DB_PATH", None)
+        os.environ.pop("DB_PATH", None)
         os.environ.pop("EVIDENCE_DIR", None)
 
 
@@ -149,6 +151,98 @@ class TestTripleEndpoints:
         assert response.status_code == 200
         data = response.get_json()
         assert data["operator_action"] == "accepted"
+
+
+class TestApiKeyAuth:
+    """API key authentication tests for mutating endpoints."""
+
+    @pytest.fixture
+    def authed_app(self):
+        """Create a test app with STATION_API_KEY set."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = os.path.join(tmpdir, "auth_test.db")
+            evidence_dir = os.path.join(tmpdir, "evidence")
+            os.makedirs(evidence_dir)
+
+            os.environ["STORAGE_MODE"] = "local"
+            os.environ["SQLITE_DB_PATH"] = db_path
+            os.environ["DB_PATH"] = db_path
+            os.environ["EVIDENCE_DIR"] = evidence_dir
+            os.environ["STATION_API_KEY"] = "test-secret-key"
+
+            import packages.inference.storage.factory as factory
+            factory._event_store = None
+            factory._evidence_store = None
+            factory._triple_store = None
+
+            from packages.inference.api_v2 import create_app
+            app = create_app(runtime=None)
+            app.config["TESTING"] = True
+
+            yield app.test_client()
+
+            os.environ.pop("SQLITE_DB_PATH", None)
+            os.environ.pop("DB_PATH", None)
+            os.environ.pop("EVIDENCE_DIR", None)
+            os.environ.pop("STATION_API_KEY", None)
+
+    def test_health_always_open(self, authed_app):
+        """GET /health requires no key."""
+        response = authed_app.get("/health")
+        assert response.status_code == 200
+
+    def test_post_without_key_rejected(self, authed_app):
+        response = authed_app.post(
+            "/api/events",
+            data=json.dumps({"event_id": "x"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 401
+        assert response.get_json()["error"] == "Unauthorized"
+
+    def test_post_wrong_key_rejected(self, authed_app):
+        response = authed_app.post(
+            "/api/events",
+            data=json.dumps({"event_id": "x"}),
+            content_type="application/json",
+            headers={"X-API-Key": "wrong-key"},
+        )
+        assert response.status_code == 401
+
+    def test_post_correct_x_api_key_accepted(self, authed_app):
+        event = {
+            "event_id": "evt_auth_001",
+            "timestamp": datetime.now().isoformat(),
+            "station_id": "station_01",
+            "verdict": "PASS",
+        }
+        response = authed_app.post(
+            "/api/events",
+            data=json.dumps(event),
+            content_type="application/json",
+            headers={"X-API-Key": "test-secret-key"},
+        )
+        assert response.status_code == 201
+
+    def test_post_correct_bearer_token_accepted(self, authed_app):
+        event = {
+            "event_id": "evt_auth_002",
+            "timestamp": datetime.now().isoformat(),
+            "station_id": "station_01",
+            "verdict": "PASS",
+        }
+        response = authed_app.post(
+            "/api/events",
+            data=json.dumps(event),
+            content_type="application/json",
+            headers={"Authorization": "Bearer test-secret-key"},
+        )
+        assert response.status_code == 201
+
+    def test_get_events_open_without_key(self, authed_app):
+        """GET endpoints remain open — operator dashboard needs unauthenticated read."""
+        response = authed_app.get("/api/events")
+        assert response.status_code == 200
 
 
 class TestEvidenceEndpoints:

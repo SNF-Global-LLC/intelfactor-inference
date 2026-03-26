@@ -35,8 +35,11 @@
 
   /* ── Image panel ── */
   .image-panel { background: var(--card); border-radius: 8px; border: 1px solid var(--border); overflow: hidden; }
-  .image-panel .placeholder { display: flex; align-items: center; justify-content: center; min-height: 400px; color: var(--muted); font-size: 16px; }
+  .image-panel .placeholder { display: flex; align-items: center; justify-content: center; min-height: 400px; color: var(--muted); font-size: 16px; text-align: center; padding: 20px; }
   .image-panel img { width: 100%; height: auto; display: block; }
+  .img-tabs { display: flex; border-bottom: 1px solid var(--border); }
+  .img-tab { padding: 7px 16px; font-size: 13px; cursor: pointer; border: none; background: none; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .img-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
 
   /* ── Verdict banner ── */
   .verdict-banner { padding: 16px 20px; text-align: center; font-size: 28px; font-weight: 700; color: white; display: none; }
@@ -85,15 +88,33 @@
   .spinner { display: none; }
   .spinner.active { display: inline-block; width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.6s linear infinite; margin-left: 8px; vertical-align: middle; }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Status bar ── */
+  .status-bar { background: #0d1b33; border-bottom: 1px solid #2a3a5c; padding: 6px 20px; display: flex; gap: 16px; flex-wrap: wrap; }
+  .status-badge { font-size: 12px; color: rgba(255,255,255,0.6); }
+  .status-badge b { color: rgba(255,255,255,0.9); }
+  .status-badge.ready b { color: #66bb6a; }
+  .status-badge.warn b { color: #ffa726; }
+
+  /* ── Verdict ── */
+  .verdict-label { font-size: 28px; font-weight: 700; line-height: 1.2; }
+  .verdict-conf { font-size: 13px; font-weight: 400; margin-top: 3px; opacity: 0.85; }
+  .verdict-meta { font-size: 11px; margin-top: 2px; opacity: 0.7; letter-spacing: 0.02em; }
 </style>
 </head>
 <body>
 <div class="header">
   <h1>IntelFactor 质检站 — Manual QC</h1>
   <div class="nav">
-    <a href="/">Dashboard</a>
-    <a href="/inspect">Inspect</a>
+    <a href="/status">Station Status</a>
+    <a href="/inspect" style="color:white;font-weight:600">Inspect</a>
   </div>
+</div>
+<div class="status-bar">
+  <span class="status-badge" id="badgeStation"><b>Station: </b><span id="badgeStationVal">—</span></span>
+  <span class="status-badge" id="badgeCamera"><b>Camera: </b><span id="badgeCameraVal">—</span></span>
+  <span class="status-badge" id="badgeModel"><b>Model: </b><span id="badgeModelVal">—</span></span>
+  <span class="status-badge ready" id="badgeReady"><b id="badgeReadyVal">Connecting…</b></span>
 </div>
 
 <div class="container">
@@ -102,7 +123,7 @@
     <input type="text" id="productId" placeholder="Product ID (optional)" style="width:180px">
     <input type="text" id="operatorId" placeholder="Operator ID (optional)" style="width:160px">
     <button class="btn-inspect" id="btnInspect" onclick="runInspection()">
-      Capture &amp; Inspect <span class="spinner" id="spinner"></span>
+      Inspect <span class="spinner" id="spinner"></span>
     </button>
   </div>
 
@@ -110,7 +131,11 @@
     <!-- Image Panel -->
     <div class="image-panel">
       <div id="verdictBanner" class="verdict-banner"></div>
-      <div id="imagePlaceholder" class="placeholder">Place product under camera, then click "Capture &amp; Inspect"</div>
+      <div id="imgTabs" class="img-tabs" style="display:none">
+        <button class="img-tab active" id="tabAnnotated" onclick="showTab('annotated')">Annotated</button>
+        <button class="img-tab" id="tabOriginal" onclick="showTab('original')">Original</button>
+      </div>
+      <div id="imagePlaceholder" class="placeholder">Place product under camera, then click "Inspect"</div>
       <img id="inspectImage" style="display:none" alt="Inspection result">
     </div>
 
@@ -167,15 +192,31 @@
 
 <script>
 let currentResult = null;
-const history = [];
+let currentTab = 'annotated';
+const sessionHistory = [];
 
+// ── Image tab toggle ────────────────────────────────────────────────
+function showTab(tab) {
+  currentTab = tab;
+  document.getElementById('tabAnnotated').classList.toggle('active', tab === 'annotated');
+  document.getElementById('tabOriginal').classList.toggle('active', tab === 'original');
+  if (!currentResult) return;
+  const img = document.getElementById('inspectImage');
+  const url = tab === 'annotated'
+    ? currentResult.image_annotated_url
+    : currentResult.image_original_url;
+  if (url) {
+    img.src = url + '?t=' + Date.now();
+  }
+}
+
+// ── Main inspection call ────────────────────────────────────────────
 async function runInspection() {
   const btn = document.getElementById('btnInspect');
   const spinner = document.getElementById('spinner');
   btn.disabled = true;
   spinner.classList.add('active');
 
-  // Reset UI
   document.getElementById('feedbackStatus').textContent = '';
   document.getElementById('btnAccept').disabled = false;
   document.getElementById('btnReject').disabled = false;
@@ -192,8 +233,13 @@ async function runInspection() {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(body),
     });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.error || resp.statusText);
+    }
     const data = await resp.json();
     currentResult = data;
+    currentTab = 'annotated';
     renderResult(data);
     addToHistory(data);
   } catch (err) {
@@ -204,34 +250,56 @@ async function runInspection() {
   }
 }
 
+// ── Render result into UI ───────────────────────────────────────────
 function renderResult(r) {
   // Verdict banner
   const banner = document.getElementById('verdictBanner');
-  banner.className = 'verdict-banner verdict-' + r.verdict;
-  banner.textContent = r.verdict + '  (' + (r.confidence * 100).toFixed(0) + '%)';
-  banner.style.display = 'block';
+  const verdict = r.verdict || r.decision || 'UNKNOWN';
+  banner.className = 'verdict-banner verdict-' + verdict;
+  const confPct = ((r.confidence || 0) * 100).toFixed(0) + '%';
+  const iid = r.inspection_id || '';
+  const ts = r.timestamp ? new Date(r.timestamp).toLocaleTimeString() : '';
+  banner.innerHTML = '<div class="verdict-label">' + verdict + '</div>'
+    + '<div class="verdict-conf">Confidence: ' + confPct + '</div>'
+    + (iid ? '<div class="verdict-meta">' + iid + (ts ? '  ·  ' + ts : '') + '</div>' : '');
 
   // Image
   const img = document.getElementById('inspectImage');
   const placeholder = document.getElementById('imagePlaceholder');
-  if (r.image_annotated_path || r.annotated_ref) {
-    // Load annotated evidence image via evidence API
-    img.src = '/api/v1/evidence/' + r.inspection_id + '_annotated/image.jpg?' + Date.now();
-    img.style.display = 'block';
-    placeholder.style.display = 'none';
+  const tabs = document.getElementById('imgTabs');
+  const annotatedUrl = r.image_annotated_url;
+  const originalUrl = r.image_original_url;
+
+  if (annotatedUrl || originalUrl) {
+    const srcUrl = (currentTab === 'annotated' ? annotatedUrl : originalUrl) || annotatedUrl || originalUrl;
+    img.onload = null;
     img.onerror = function() {
-      // Fall back to original if annotated not available via evidence store
-      img.src = '/api/evidence/' + r.inspection_id + '?' + Date.now();
-      img.onerror = function() {
+      // If annotated 404s, fall back to original
+      if (currentTab === 'annotated' && originalUrl) {
+        img.src = originalUrl + '?t=' + Date.now();
+        img.onerror = function() {
+          img.style.display = 'none';
+          placeholder.style.display = 'flex';
+          placeholder.textContent = 'Image saved to disk but not available via HTTP (evidence write may need OpenCV).';
+        };
+      } else {
         img.style.display = 'none';
         placeholder.style.display = 'flex';
-        placeholder.textContent = 'Image not available (evidence store may not be configured)';
-      };
+        placeholder.textContent = 'Image not available';
+      }
     };
+    img.src = srcUrl + '?t=' + Date.now();
+    img.style.display = 'block';
+    placeholder.style.display = 'none';
+    tabs.style.display = (annotatedUrl && originalUrl) ? 'flex' : 'none';
+    // Reset tab buttons
+    document.getElementById('tabAnnotated').classList.toggle('active', currentTab === 'annotated');
+    document.getElementById('tabOriginal').classList.toggle('active', currentTab === 'original');
   } else {
     img.style.display = 'none';
     placeholder.style.display = 'flex';
-    placeholder.textContent = r.error || 'No image available';
+    placeholder.textContent = r.error || 'No image — capture backend returned no evidence path.';
+    tabs.style.display = 'none';
   }
 
   // Timing
@@ -250,21 +318,22 @@ function renderResult(r) {
     r.detections.forEach(d => {
       const tr = document.createElement('tr');
       const sevClass = d.severity >= 0.7 ? 'sev-high' : d.severity >= 0.4 ? 'sev-med' : 'sev-low';
-      tr.innerHTML = '<td>' + d.defect_type + '</td><td>' + (d.confidence * 100).toFixed(0) + '%</td><td class="' + sevClass + '">' + (d.severity * 100).toFixed(0) + '%</td>';
+      tr.innerHTML = '<td>' + (d.defect_type || '?') + '</td>'
+        + '<td>' + ((d.confidence || 0) * 100).toFixed(0) + '%</td>'
+        + '<td class="' + sevClass + '">' + ((d.severity || 0) * 100).toFixed(0) + '%</td>';
       tbody.appendChild(tr);
     });
   } else {
-    document.getElementById('detectionsCard').style.display = 'none';
+    document.getElementById('detectionsCard').style.display = '';
+    tbody.innerHTML = '<tr><td colspan="3" style="color:var(--muted);text-align:center">No defects detected</td></tr>';
   }
 
   // Feedback (only for FAIL/REVIEW)
-  if (r.verdict === 'FAIL' || r.verdict === 'REVIEW') {
-    document.getElementById('feedbackCard').style.display = '';
-  } else {
-    document.getElementById('feedbackCard').style.display = 'none';
-  }
+  document.getElementById('feedbackCard').style.display =
+    (verdict === 'FAIL' || verdict === 'REVIEW') ? '' : 'none';
 }
 
+// ── Operator feedback ───────────────────────────────────────────────
 async function sendFeedback(action) {
   if (!currentResult) return;
   const oid = document.getElementById('operatorId').value.trim();
@@ -276,13 +345,11 @@ async function sendFeedback(action) {
     const resp = await fetch('/api/inspect/' + currentResult.inspection_id + '/feedback', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        action: action,
-        operator_id: oid || 'anonymous',
-      }),
+      body: JSON.stringify({action: action, operator_id: oid || 'anonymous'}),
     });
     const data = await resp.json();
-    document.getElementById('feedbackStatus').textContent = 'Feedback recorded: ' + action;
+    document.getElementById('feedbackStatus').textContent =
+      data.status === 'recorded' ? '✓ Feedback recorded: ' + action : (data.error || 'Unknown error');
   } catch (err) {
     document.getElementById('feedbackStatus').textContent = 'Failed: ' + err.message;
     document.getElementById('btnAccept').disabled = false;
@@ -290,21 +357,93 @@ async function sendFeedback(action) {
   }
 }
 
+// ── History ─────────────────────────────────────────────────────────
 function addToHistory(r) {
-  history.unshift(r);
-  if (history.length > 20) history.pop();
+  sessionHistory.unshift(r);
+  if (sessionHistory.length > 50) sessionHistory.pop();
+  renderHistory(sessionHistory);
+}
 
+function renderHistory(items) {
   const list = document.getElementById('historyList');
+  if (!items || items.length === 0) {
+    list.innerHTML = '<div style="color:var(--muted);font-size:13px;">No inspections yet</div>';
+    return;
+  }
   list.innerHTML = '';
-  history.forEach((h, i) => {
+  items.forEach(h => {
     const div = document.createElement('div');
     div.className = 'history-item';
-    const time = new Date(h.timestamp).toLocaleTimeString();
-    div.innerHTML = '<span>' + time + ' — ' + (h.product_id || 'unknown') + '</span><span class="verdict-tag tag-' + h.verdict + '">' + h.verdict + '</span>';
-    div.onclick = () => renderResult(h);
+    const verdict = h.verdict || h.decision || '?';
+    const ts = h.timestamp ? new Date(h.timestamp).toLocaleTimeString() : '';
+    const pid = h.product_id || '';
+    div.innerHTML = '<span>' + ts + (pid ? ' — ' + pid : '') + '</span>'
+      + '<span class="verdict-tag tag-' + verdict + '">' + verdict + '</span>';
+    div.onclick = () => { currentResult = h; currentTab = 'annotated'; renderResult(h); };
     list.appendChild(div);
   });
 }
+
+async function loadHistory() {
+  try {
+    const resp = await fetch('/api/inspections?limit=20');
+    if (!resp.ok) return;
+    const data = await resp.json();
+    // Map DB records to the shape renderResult expects
+    const items = (data.inspections || []).map(e => ({
+      ...e,
+      verdict: e.decision || e.verdict,
+      image_annotated_url: '/api/inspections/' + e.inspection_id + '/annotated.jpg',
+      image_original_url: '/api/inspections/' + e.inspection_id + '/original.jpg',
+    }));
+    renderHistory(items);
+  } catch (_) {}
+}
+
+// ── Status badges ───────────────────────────────────────────────────
+async function loadStatus() {
+  try {
+    const resp = await fetch('/api/status');
+    if (!resp.ok) {
+      document.getElementById('badgeReadyVal').textContent = 'API unavailable';
+      document.getElementById('badgeReady').className = 'status-badge warn';
+      return;
+    }
+    const d = await resp.json();
+
+    document.getElementById('badgeStationVal').textContent = d.station_id || '—';
+
+    // Camera badge
+    const camBackend = d.camera_backend || 'unknown';
+    const camConnected = d.camera_connected;
+    const camLabel = camBackend === 'disabled' ? 'disabled'
+      : camConnected ? camBackend : camBackend + ' (not connected)';
+    document.getElementById('badgeCameraVal').textContent = camLabel;
+    document.getElementById('badgeCamera').className =
+      'status-badge' + (camConnected || camBackend === 'disabled' ? '' : ' warn');
+
+    // Model badge
+    const visionKey = d.vision_model_key || d.vision_backend || '—';
+    const isStub = d.vision_is_stub;
+    document.getElementById('badgeModelVal').textContent =
+      isStub ? 'stub (dev)' : visionKey;
+    document.getElementById('badgeModel').className =
+      'status-badge' + (isStub ? ' warn' : '');
+
+    // Ready badge
+    const captureReady = camConnected || camBackend === 'disabled';
+    document.getElementById('badgeReadyVal').textContent = captureReady ? 'Ready' : 'Camera not connected';
+    document.getElementById('badgeReady').className =
+      'status-badge' + (captureReady ? ' ready' : ' warn');
+  } catch (_) {
+    document.getElementById('badgeReadyVal').textContent = 'Offline';
+    document.getElementById('badgeReady').className = 'status-badge warn';
+  }
+}
+
+// ── Init ────────────────────────────────────────────────────────────
+loadHistory();
+loadStatus();
 </script>
 </body>
 </html>

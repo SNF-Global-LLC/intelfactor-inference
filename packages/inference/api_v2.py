@@ -49,6 +49,35 @@ def create_app(
     )
     app.config["JSON_AS_ASCII"] = False  # Allow Chinese in JSON responses
 
+    # ── API Key Auth ────────────────────────────────────────────────
+    _api_key = os.environ.get("STATION_API_KEY", "")
+    if not _api_key:
+        logger.warning(
+            "STATION_API_KEY not set — mutating endpoints are UNPROTECTED. "
+            "Set STATION_API_KEY in environment before production deployment."
+        )
+
+    def _require_api_key() -> tuple[Any, int] | None:
+        """
+        Check API key for mutating endpoints.
+        Returns a (response, status) tuple to return immediately if auth fails,
+        or None if auth passes (or no key is configured).
+        """
+        if not _api_key:
+            return None  # dev mode — no key configured
+
+        # Accept X-API-Key header or Authorization: Bearer <token>
+        provided = request.headers.get("X-API-Key") or ""
+        if not provided:
+            auth_header = request.headers.get("Authorization", "")
+            if auth_header.startswith("Bearer "):
+                provided = auth_header[7:]
+
+        if provided != _api_key:
+            return jsonify({"error": "Unauthorized"}), 401
+
+        return None
+
     # Store runtime reference
     app.runtime = runtime
 
@@ -61,14 +90,13 @@ def create_app(
     metrics = init_metrics(app, db_path=db_path, station_id=station_id)
     app.register_blueprint(metrics_bp)
 
-    # ── Dashboard ───────────────────────────────────────────────────
+    # ── Pages ────────────────────────────────────────────────────────
 
     @app.route("/", methods=["GET"])
-    def dashboard():
-        """Serve the operator dashboard."""
-        from flask import send_from_directory
-        static_dir = os.path.join(os.path.dirname(__file__), "static")
-        return send_from_directory(static_dir, "index.html")
+    def root():
+        """Redirect to the inspection page — primary operator surface."""
+        from flask import redirect
+        return redirect("/inspect")
 
     @app.route("/inspect", methods=["GET"])
     def inspect_page():
@@ -76,6 +104,13 @@ def create_app(
         from flask import send_from_directory
         static_dir = os.path.join(os.path.dirname(__file__), "static")
         return send_from_directory(static_dir, "inspect.html")
+
+    @app.route("/status", methods=["GET"])
+    def status_page():
+        """Serve the station status / diagnostics page."""
+        from flask import send_from_directory
+        static_dir = os.path.join(os.path.dirname(__file__), "static")
+        return send_from_directory(static_dir, "index.html")
 
     # ── Health ──────────────────────────────────────────────────────
 
@@ -101,7 +136,13 @@ def create_app(
         stats = app.runtime.get_stats()
         stats["storage_mode"] = get_storage_mode()
 
-        # Add camera stats if available
+        # Camera backend info (set by cli.py after capture init)
+        stats["camera_backend"] = getattr(app.runtime, "_camera_backend", "unknown")
+        stats["camera_connected"] = getattr(app.runtime, "_camera_connected", False)
+        stats["vision_model_key"] = getattr(app.runtime, "_vision_model_key", "unknown")
+        stats["language_model_key"] = getattr(app.runtime, "_language_model_key", "unknown")
+
+        # Add continuous ingest stats if available (RTSP/USB streaming mode)
         if hasattr(app.runtime, "_ingest") and app.runtime._ingest:
             stats["camera"] = app.runtime._ingest.get_stats()
 
@@ -132,6 +173,8 @@ def create_app(
     @app.route("/api/events", methods=["POST"])
     def create_event():
         """Create a new event."""
+        if (err := _require_api_key()) is not None:
+            return err
         data = request.get_json()
         if not data:
             return jsonify({"error": "JSON body required"}), 400
@@ -247,6 +290,8 @@ def create_app(
     @app.route("/api/triples/<triple_id>", methods=["PATCH"])
     def update_triple(triple_id):
         """Update a triple (operator feedback)."""
+        if (err := _require_api_key()) is not None:
+            return err
         data = request.get_json()
         if not data:
             return jsonify({"error": "JSON body required"}), 400
@@ -302,6 +347,8 @@ def create_app(
         Record operator feedback on a recommendation.
         Body: {triple_id, action: accepted|rejected|modified, operator_id, outcome?, rejection_reason?}
         """
+        if (err := _require_api_key()) is not None:
+            return err
         data = request.get_json()
         if not data or "triple_id" not in data or "action" not in data:
             return jsonify({"error": "Missing triple_id or action"}), 400
@@ -342,6 +389,8 @@ def create_app(
         Record a manual process parameter reading from operator.
         Body: {parameter_name, value, station_id?}
         """
+        if (err := _require_api_key()) is not None:
+            return err
         if not app.runtime or not app.runtime.pipeline:
             return jsonify({"error": "Pipeline not ready"}), 503
 
@@ -390,6 +439,8 @@ def create_app(
 
         Body (optional): {"product_id": "...", "operator_id": "...", "workspace_id": "..."}
         """
+        if (err := _require_api_key()) is not None:
+            return err
         from packages.inference.inspection import run_inspection
 
         if not app.runtime:
@@ -401,7 +452,43 @@ def create_app(
         if result.get("verdict") == "ERROR":
             return jsonify(result), 500
 
+        # Add direct image URLs so the operator UI doesn't need to know about
+        # the evidence store internals. Routes are defined below.
+        iid = result["inspection_id"]
+        result["image_original_url"] = f"/api/inspections/{iid}/original.jpg"
+        result["image_annotated_url"] = f"/api/inspections/{iid}/annotated.jpg"
+
         return jsonify(result)
+
+    # ── Inspection Image Serving ────────────────────────────────────
+
+    @app.route("/api/inspections/<inspection_id>/original.jpg", methods=["GET"])
+    def get_inspection_original_img(inspection_id):
+        """Serve the original (unannotated) JPEG for an inspection."""
+        store = getattr(app.runtime, "_inspection_store", None) if app.runtime else None
+        if not store:
+            abort(404)
+        event = store.get(inspection_id)
+        if not event or not event.image_original_path:
+            abort(404)
+        full_path = evidence_dir / event.image_original_path
+        if not full_path.exists():
+            abort(404)
+        return send_file(str(full_path), mimetype="image/jpeg")
+
+    @app.route("/api/inspections/<inspection_id>/annotated.jpg", methods=["GET"])
+    def get_inspection_annotated_img(inspection_id):
+        """Serve the annotated JPEG (bounding boxes drawn) for an inspection."""
+        store = getattr(app.runtime, "_inspection_store", None) if app.runtime else None
+        if not store:
+            abort(404)
+        event = store.get(inspection_id)
+        if not event or not event.image_annotated_path:
+            abort(404)
+        full_path = evidence_dir / event.image_annotated_path
+        if not full_path.exists():
+            abort(404)
+        return send_file(str(full_path), mimetype="image/jpeg")
 
     @app.route("/api/inspect/<inspection_id>/feedback", methods=["POST"])
     def inspect_feedback(inspection_id):
@@ -409,6 +496,8 @@ def create_app(
         Record operator feedback on an inspection result.
         Body: {"action": "accepted"|"rejected", "operator_id": "...", "reason": "...", "notes": "..."}
         """
+        if (err := _require_api_key()) is not None:
+            return err
         data = request.get_json()
         if not data or "action" not in data:
             return jsonify({"error": "Missing action field"}), 400

@@ -64,6 +64,7 @@ def app(tmp_path):
 
     os.environ["STORAGE_MODE"] = "local"
     os.environ["SQLITE_DB_PATH"] = str(defect_db)
+    os.environ["DB_PATH"] = str(defect_db)
     os.environ["EVIDENCE_DIR"] = str(evidence_dir)
 
     # Reset storage factory singletons so they pick up the tmp paths
@@ -97,6 +98,7 @@ def app(tmp_path):
 
     svc.stop()
     os.environ.pop("SQLITE_DB_PATH", None)
+    os.environ.pop("DB_PATH", None)
     os.environ.pop("EVIDENCE_DIR", None)
 
 

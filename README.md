@@ -1,6 +1,6 @@
 # IntelFactor Inference Engine
 
-Edge-native manufacturing quality inspection + closed-loop root cause analysis.
+Edge-native manufacturing quality inspection + root cause analysis.
 
 Runs entirely on NVIDIA Jetson — no cloud required. Detects defects, explains why they happened, recommends what to do about it, and learns from operator feedback.
 

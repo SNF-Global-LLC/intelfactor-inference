@@ -235,12 +235,64 @@ class FileCapture:
         pass
 
 
-def get_capture(config: dict[str, Any]) -> FLIRCapture | FileCapture:
+class WebcamCapture:
+    """
+    OpenCV webcam capture for development on Mac or any laptop.
+    Uses a persistent VideoCapture object — opened once, reused per capture.
+    Tomorrow: swap protocol to "pyspin" for FLIR Blackfly. Everything else stays.
+    """
+
+    def __init__(self, config: dict[str, Any]):
+        self._config = config
+        self._device_index = config.get("device_index", 0)
+        self._warmup_frames = config.get("warmup_frames", 3)
+
+        try:
+            import cv2
+        except ImportError:
+            raise CaptureError("OpenCV required for WebcamCapture (pip install opencv-python-headless)")
+
+        self._cap = cv2.VideoCapture(self._device_index)
+        if not self._cap.isOpened():
+            raise CaptureError(f"Cannot open webcam device index {self._device_index}")
+
+        # Set resolution if specified
+        width = config.get("width")
+        height = config.get("height")
+        if width:
+            self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        if height:
+            self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+
+        # Warm up: discard first few frames so auto-exposure settles
+        for _ in range(self._warmup_frames):
+            self._cap.read()
+
+        actual_w = int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        actual_h = int(self._cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        logger.info("WebcamCapture ready: device=%d %dx%d", self._device_index, actual_w, actual_h)
+
+    def capture_frame(self) -> np.ndarray:
+        """Grab one frame from the webcam."""
+        ret, frame = self._cap.read()
+        if not ret or frame is None:
+            raise CaptureError(f"Webcam read failed (device {self._device_index})")
+        return frame
+
+    def release(self) -> None:
+        if self._cap and self._cap.isOpened():
+            self._cap.release()
+        logger.info("WebcamCapture released")
+
+
+def get_capture(config: dict[str, Any]) -> FLIRCapture | FileCapture | WebcamCapture:
     """Factory: return the right capture backend based on config['protocol']."""
     protocol = config.get("protocol", "file")
 
     if protocol == "pyspin":
         return FLIRCapture(config)
+    elif protocol == "webcam":
+        return WebcamCapture(config)
     elif protocol == "file":
         return FileCapture(config)
     else:

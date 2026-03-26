@@ -89,10 +89,11 @@
 
 <!-- Header -->
 <div class="header">
-  <h1>🔍 IntelFactor 质检面板</h1>
+  <h1>🔍 IntelFactor 站点状态</h1>
   <div class="status">
+    <a href="/inspect" style="color:white;font-size:13px;font-weight:600;text-decoration:none;background:rgba(255,255,255,0.15);padding:4px 12px;border-radius:4px">▶ Inspect</a>
     <span><span class="dot dot-green" id="statusDot"></span> <span id="statusText">连接中...</span></span>
-    <span id="fpsDisplay">-- FPS</span>
+    <span id="captureDisplay">--</span>
     <span id="tripleCount">-- 因果三元组</span>
     <button class="lang-btn" onclick="toggleLang()"><span id="langLabel">EN</span></button>
   </div>
@@ -147,7 +148,7 @@
   <!-- Recent Events -->
   <div class="card">
     <div class="card-title">
-      <span data-zh="📊 最近检测事件" data-en="📊 Recent Events">📊 最近检测事件</span>
+      <span data-zh="📊 最近检测记录" data-en="📊 Recent Inspections">📊 最近检测记录</span>
     </div>
     <div class="card-body event-list" id="eventList">
       <div class="loading" data-zh="加载中..." data-en="Loading...">加载中...</div>
@@ -251,14 +252,25 @@ async function updateStatus() {
   const data = await api('/api/status');
   if (!data) {
     document.getElementById('statusDot').className = 'dot dot-red';
-    document.getElementById('statusText').textContent = lang === 'zh' ? '离线' : 'Offline';
+    document.getElementById('statusText').textContent = lang === 'zh' ? '服务离线' : 'Service offline';
+    document.getElementById('captureDisplay').textContent = '';
     return;
   }
   document.getElementById('statusDot').className = 'dot dot-green';
-  document.getElementById('statusText').textContent = lang === 'zh' ? '运行中' : 'Running';
+  document.getElementById('statusText').textContent = lang === 'zh' ? '服务就绪' : 'Service ready';
 
+  // Capture display — FPS for streaming, backend name for trigger-based
   const cam = data.camera || {};
-  document.getElementById('fpsDisplay').textContent = `${cam.fps_actual || '--'} FPS`;
+  const camBackend = data.camera_backend || '';
+  if (cam.fps_actual) {
+    document.getElementById('captureDisplay').textContent = `${cam.fps_actual} FPS`;
+  } else if (camBackend && camBackend !== 'disabled' && camBackend !== 'unknown') {
+    const connected = data.camera_connected;
+    document.getElementById('captureDisplay').textContent =
+      camBackend + (connected ? ' ✓' : ' ✗');
+  } else {
+    document.getElementById('captureDisplay').textContent = '';
+  }
 
   const pipe = data.pipeline || {};
   const tStats = pipe.recommender || {};
@@ -267,15 +279,18 @@ async function updateStatus() {
 
   // System status card
   const el = document.getElementById('systemStatus');
+  const visionBackend = data.vision_is_stub ? 'stub (dev)' : (data.vision_model_key || data.vision_backend || '--');
+  const langBackend = data.language_is_stub ? 'stub (dev)' : (data.language_model_key || data.language_backend || '--');
+  const camStatus = data.camera_connected ? (camBackend || '--') + ' ✓' : (camBackend || '--') + ' (not connected)';
   el.innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px">
       <div><b>${lang === 'zh' ? '工位' : 'Station'}:</b> ${data.station_id || '--'}</div>
       <div><b>${lang === 'zh' ? '模式' : 'Mode'}:</b> ${data.mode || '--'}</div>
-      <div><b>${lang === 'zh' ? '相机FPS' : 'Camera FPS'}:</b> ${cam.fps_actual || '--'}</div>
-      <div><b>${lang === 'zh' ? '已捕获' : 'Captured'}:</b> ${cam.frames_captured || '--'}</div>
-      <div><b>${lang === 'zh' ? '已丢弃' : 'Dropped'}:</b> ${cam.frames_dropped || 0}</div>
-      <div><b>${lang === 'zh' ? '重连次数' : 'Reconnects'}:</b> ${cam.reconnects || 0}</div>
+      <div><b>${lang === 'zh' ? '相机' : 'Camera'}:</b> ${camStatus}</div>
+      <div><b>${lang === 'zh' ? '视觉模型' : 'Vision'}:</b> ${visionBackend}</div>
+      <div><b>${lang === 'zh' ? '语言模型' : 'Language'}:</b> ${langBackend}</div>
       <div><b>${lang === 'zh' ? '待复检队列' : 'Review Queue'}:</b> ${data.review_queue_depth || 0}</div>
+      <div><b>${lang === 'zh' ? '存储路径' : 'Storage'}:</b> ${data.storage_mode || '--'}</div>
       <div><b>${lang === 'zh' ? '累计事件' : 'Total Events'}:</b> ${(pipe.accumulator || {}).total_events || 0}</div>
     </div>
   `;

@@ -1,0 +1,106 @@
+# IntelFactor.ai — Mac Development Station Config
+# Use this to run the full edge inspection pipeline on a MacBook without Jetson or FLIR hardware.
+#
+# What this gives you:
+#   - Full inspection flow: capture → infer → verdict → annotate → persist
+#   - Synthetic frame capture (no camera required) or test image from disk
+#   - Stub vision + language providers (no TensorRT, no GGUF)
+#   - Local SQLite persistence (inspections.db)
+#   - Evidence written to /tmp/intelfactor-dev/data/evidence/
+#   - No cloud sync (CLOUD_API_URL not set)
+#
+# Start:
+#   python3 -m packages.inference.cli --config configs/dev-mac-station.yaml --host 127.0.0.1 --log-level DEBUG
+#
+# Or if installed:
+#   intelfactor-station --config configs/dev-mac-station.yaml --host 127.0.0.1 --log-level DEBUG
+#
+# Tomorrow, FLIR swap: change camera.protocol to "pyspin" and vision_model to your engine path.
+
+# ── Deployment Mode ────────────────────────────────────────────────────
+mode: station_only
+
+# ── Station Identity ───────────────────────────────────────────────────
+station_id: dev-mac-station
+factory_id: dev-local
+
+# ── Paths ──────────────────────────────────────────────────────────────
+# /tmp is auto-cleaned but fine for a dev session.
+# Change to ~/intelfactor-dev/data if you want persistence across reboots.
+data_dir: /tmp/intelfactor-dev/data
+model_dir: /tmp/intelfactor-dev/models
+edge_yaml_path: /tmp/intelfactor-dev/config/edge.yaml   # missing = empty config, that's fine
+
+# ── Camera ─────────────────────────────────────────────────────────────
+# protocol: file  — uses a test image from disk, or synthetic frame if test_image is null
+# Set test_image to an absolute path to a real knife JPEG for realistic testing.
+# Tomorrow: change protocol to "pyspin" for FLIR Blackfly.
+camera:
+  enabled: true
+  protocol: "webcam"            # Mac laptop FaceTime camera via OpenCV
+  device_index: 0               # 0 = default camera. Change if you have multiple cameras.
+  warmup_frames: 3              # discard first 3 frames so auto-exposure settles
+  width: 1920
+  height: 1080
+
+# ── Vision Inference ───────────────────────────────────────────────────
+# stub = no TRT engine required. Returns PASS + 0 detections.
+# Tomorrow on Jetson: change to "yolov8n_trt" or point to your engine bundle.
+vision_model: stub
+confidence_threshold: 0.5
+nms_threshold: 0.45
+
+# ── Language Model (RCA) ──────────────────────────────────────────────
+# stub = no GGUF required. Returns static bilingual explanation.
+# Tomorrow on Jetson: change to "qwen25_3b_int4" or your GGUF path.
+language_model: stub
+
+# ── RCA Pipeline ──────────────────────────────────────────────────────
+rca:
+  anomaly_check_interval_sec: 300
+  z_score_threshold: 2.5
+  min_events_for_baseline: 20
+  window_hours: 4.0
+
+# ── Defect Classes ─────────────────────────────────────────────────────
+# Must match your model's output order. Stub mode ignores this.
+defect_classes:
+  - blade_scratch
+  - grinding_mark
+  - surface_dent
+  - surface_crack
+  - weld_defect
+  - edge_burr
+  - edge_crack
+  - handle_defect
+  - bolster_gap
+  - etching_defect
+  - inclusion
+  - surface_discolor
+  - overgrind
+
+# ── Machine Health Copilot ────────────────────────────────────────────
+# Disabled in dev mode — avoids MQTT dependency.
+machine_health:
+  enabled: false
+
+# ── Hub (not used in station_only mode) ──────────────────────────────
+hub:
+  url: http://hub.local:8080
+  review_queue_enabled: false
+  cross_line_rca_enabled: false
+
+# ── FLIR Swap Reference ───────────────────────────────────────────────
+# When you're in the office with the Blackfly:
+#
+#   camera:
+#     enabled: true
+#     protocol: "pyspin"
+#     serial_number: "25423789"     # your camera's serial
+#     pixel_format: "Mono8"
+#     width: 1920
+#     height: 1200
+#     exposure_auto: true
+#     gain: 10.0
+#
+# Everything else (inspect endpoint, evidence, SQLite, sync) stays identical.

@@ -21,6 +21,7 @@ import logging
 import os
 import threading
 import time
+from datetime import timezone
 from pathlib import Path
 from typing import Any
 
@@ -154,12 +155,30 @@ class InspectionSyncWorker:
         """Upload one inspection event to cloud."""
         import httpx
 
+        # Validate required fields before any network calls
+        if not event.workspace_id:
+            raise ValueError(
+                f"workspace_id is empty for inspection {event.inspection_id} — "
+                "set workspace_id in station config or WORKSPACE_ID env var before enabling cloud sync"
+            )
+
+        logger.info(
+            "[%s] Starting sync (workspace=%s station=%s)",
+            event.inspection_id, event.workspace_id, event.station_id,
+        )
+
         self.store.update_sync_status(event.inspection_id, SyncStatus.UPLOADING)
 
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
 
         # Step A: Request presigned upload URLs
         upload_urls = self._get_upload_urls(event, headers)
+        logger.debug(
+            "[%s] Upload URLs received: original=%s annotated=%s",
+            event.inspection_id,
+            bool(upload_urls.get("original_url")),
+            bool(upload_urls.get("annotated_url")),
+        )
 
         # Step B: Upload images to S3
         original_url = ""
@@ -172,6 +191,12 @@ class InspectionSyncWorker:
                     original_path,
                     upload_urls["original_url"],
                 )
+                logger.debug("[%s] Original image uploaded → %s", event.inspection_id, original_url)
+            else:
+                logger.warning(
+                    "[%s] Original image not found at %s — uploading without image",
+                    event.inspection_id, original_path,
+                )
 
         if upload_urls.get("annotated_url") and event.image_annotated_path:
             annotated_path = self.evidence_dir / event.image_annotated_path
@@ -179,6 +204,12 @@ class InspectionSyncWorker:
                 annotated_url = self._upload_file(
                     annotated_path,
                     upload_urls["annotated_url"],
+                )
+                logger.debug("[%s] Annotated image uploaded → %s", event.inspection_id, annotated_url)
+            else:
+                logger.warning(
+                    "[%s] Annotated image not found at %s — uploading without annotated image",
+                    event.inspection_id, annotated_path,
                 )
 
         # Step C: Finalize — POST inspection metadata to backend
@@ -190,7 +221,17 @@ class InspectionSyncWorker:
                 json=payload,
                 headers=headers,
             )
+            if not resp.is_success:
+                logger.error(
+                    "[%s] Inspection ingest failed: HTTP %d — %s",
+                    event.inspection_id, resp.status_code, resp.text[:300],
+                )
             resp.raise_for_status()
+
+        logger.info(
+            "[%s] Synced successfully (HTTP %d, decision=%s)",
+            event.inspection_id, resp.status_code, event.decision,
+        )
 
         # Step D: Mark synced
         self.store.update_sync_status(
@@ -199,8 +240,6 @@ class InspectionSyncWorker:
             image_original_url=original_url,
             image_annotated_url=annotated_url,
         )
-
-        logger.info("Synced: %s", event.inspection_id)
 
     def _get_upload_urls(
         self,
@@ -222,6 +261,11 @@ class InspectionSyncWorker:
                 },
                 headers=headers,
             )
+            if not resp.is_success:
+                logger.error(
+                    "[%s] upload-urls request failed: HTTP %d — %s",
+                    event.inspection_id, resp.status_code, resp.text[:300],
+                )
             resp.raise_for_status()
             return resp.json()
 
@@ -240,6 +284,10 @@ class InspectionSyncWorker:
                 content=data,
                 headers={"Content-Type": content_type},
             )
+            if not resp.is_success:
+                logger.error(
+                    "S3 upload failed for %s: HTTP %d", local_path.name, resp.status_code
+                )
             resp.raise_for_status()
 
         # Return the URL without query params (the actual S3 object URL)
@@ -267,9 +315,15 @@ class InspectionSyncWorker:
                 },
             })
 
+        # Ensure timestamp has UTC timezone suffix (edge stores naive UTC datetimes)
+        ts = event.timestamp
+        if ts is not None and ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        timestamp_str = ts.isoformat() if ts else ""
+
         return {
             "inspection_id": event.inspection_id,
-            "timestamp": event.timestamp.isoformat() if event.timestamp else "",
+            "timestamp": timestamp_str,
             "station_id": event.station_id,
             "workspace_id": event.workspace_id,
             "product_id": event.product_id,

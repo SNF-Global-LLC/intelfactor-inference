@@ -207,8 +207,14 @@ class CapabilityResolver:
         """Resolve the optimal VisionProvider for detected hardware."""
         caps = self.detect_capabilities()
 
-        # Allow config override
+        # Dev/stub mode — no TRT hardware required
         model_key = override_model or self.config.get("vision_model")
+        if model_key == "stub":
+            from packages.inference.providers.stub import StubVisionProvider
+            merged_config = {**self.config, **(provider_config or {})}
+            return StubVisionProvider(config=merged_config)
+
+        # Allow config override
         if model_key and model_key in VISION_MODELS:
             model_def = VISION_MODELS[model_key]
         else:
@@ -330,8 +336,14 @@ class CapabilityResolver:
         """Resolve the optimal LanguageProvider for detected hardware."""
         caps = self.detect_capabilities()
 
-        # Allow config override
+        # Dev/stub mode — no GPU or GGUF required
         model_key = override_model or self.config.get("language_model")
+        if model_key == "stub":
+            from packages.inference.providers.stub import StubLanguageProvider
+            merged_config = {**self.config, **(provider_config or {})}
+            return StubLanguageProvider(config=merged_config)
+
+        # Allow config override
         if model_key and model_key in LANGUAGE_MODELS:
             model_def = LANGUAGE_MODELS[model_key]
         else:

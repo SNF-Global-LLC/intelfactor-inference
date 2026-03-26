@@ -320,6 +320,10 @@ class StationRuntime:
             "mode": self.mode.value,
             "running": self._running,
             "review_queue_depth": self._review_queue.qsize(),
+            "vision_backend": type(self.vision).__name__ if self.vision else "none",
+            "language_backend": type(self.language).__name__ if self.language else "none",
+            "vision_is_stub": type(self.vision).__name__ == "StubVisionProvider" if self.vision else None,
+            "language_is_stub": type(self.language).__name__ == "StubLanguageProvider" if self.language else None,
         }
         if self.pipeline:
             stats["pipeline"] = self.pipeline.get_stats()

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "intelfactor-inference"
 version = "0.1.0"
-description = "Edge-native manufacturing inspection + closed-loop RCA engine"
+description = "Edge-native manufacturing inspection + root cause analysis engine"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Proprietary"}
@@ -37,7 +37,7 @@ server = [
 ]
 # Cloud sync (for hybrid mode)
 sync = [
-    "requests>=2.31",
+    "httpx>=0.27",
     "boto3>=1.34",
     "tenacity>=8.2",
 ]

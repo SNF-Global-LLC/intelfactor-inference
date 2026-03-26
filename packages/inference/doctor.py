@@ -132,6 +132,102 @@ def check_gpu() -> CheckResult:
         return CheckResult("GPU", False, f"GPU check failed: {e}")
 
 
+def check_pyspin(serial_number: str = "") -> CheckResult:
+    """Check PySpin import and FLIR camera detection by serial number."""
+    try:
+        import PySpin  # type: ignore[import]
+    except ImportError:
+        return CheckResult(
+            "Camera (PySpin)", False,
+            "PySpin not installed",
+            "Install Spinnaker SDK from FLIR:\n"
+            "  https://www.flir.com/products/spinnaker-sdk/\n"
+            "  Then: pip install spinnaker_python-*.whl",
+        )
+
+    try:
+        system = PySpin.System.GetInstance()
+        cam_list = system.GetCameras()
+        count = cam_list.GetSize()
+
+        if count == 0:
+            cam_list.Clear()
+            system.ReleaseInstance()
+            return CheckResult(
+                "Camera (PySpin)", False,
+                "No FLIR cameras found",
+                "Check USB3 connection and Spinnaker driver installation",
+            )
+
+        if serial_number:
+            found_serial = ""
+            for i in range(count):
+                cam = cam_list[i]
+                cam.Init()
+                node_serial = PySpin.CStringPtr(
+                    cam.GetTLDeviceNodeMap().GetNode("DeviceSerialNumber")
+                )
+                if PySpin.IsReadable(node_serial) and node_serial.GetValue() == serial_number:
+                    found_serial = node_serial.GetValue()
+                    cam.DeInit()
+                    break
+                cam.DeInit()
+
+            cam_list.Clear()
+            system.ReleaseInstance()
+
+            if not found_serial:
+                return CheckResult(
+                    "Camera (PySpin)", False,
+                    f"Camera serial {serial_number} not found ({count} camera(s) present)",
+                    "Check serial number in config matches SpinView. "
+                    f"Set camera.serial_number in station.yaml.",
+                )
+            return CheckResult(
+                "Camera (PySpin)", True,
+                f"FLIR camera {serial_number} detected and reachable",
+            )
+        else:
+            cam_list.Clear()
+            system.ReleaseInstance()
+            return CheckResult(
+                "Camera (PySpin)", True,
+                f"{count} FLIR camera(s) found (no serial filter — set serial_number in config)",
+            )
+
+    except Exception as e:
+        return CheckResult("Camera (PySpin)", False, f"PySpin error: {e}")
+
+
+def check_webcam(device_index: int = 0) -> CheckResult:
+    """Check webcam accessibility via OpenCV."""
+    try:
+        import cv2  # type: ignore[import]
+    except ImportError:
+        return CheckResult("Camera (Webcam)", False, "OpenCV not installed", "pip install opencv-python-headless")
+
+    try:
+        cap = cv2.VideoCapture(device_index)
+        if not cap.isOpened():
+            return CheckResult(
+                "Camera (Webcam)", False,
+                f"Cannot open device index {device_index}",
+                "Check camera connection or try a different device_index",
+            )
+        ret, frame = cap.read()
+        cap.release()
+        if ret and frame is not None:
+            h, w = frame.shape[:2]
+            return CheckResult("Camera (Webcam)", True, f"Device {device_index} accessible: {w}x{h}")
+        return CheckResult(
+            "Camera (Webcam)", False,
+            f"Device {device_index} opened but no frames returned",
+            "Camera may be in use by another application",
+        )
+    except Exception as e:
+        return CheckResult("Camera (Webcam)", False, f"Webcam error: {e}")
+
+
 def check_camera(source: str, protocol: str = "rtsp") -> CheckResult:
     """Check if camera is reachable."""
     if not source:
@@ -345,7 +441,7 @@ def run_doctor(
     data_dir: str | None = None,
     model_dir: str | None = None,
     camera_source: str | None = None,
-    camera_protocol: str = "rtsp",
+    camera_protocol: str = "",
     taxonomy_path: str | None = None,
     skip_camera: bool = False,
 ) -> DoctorReport:
@@ -374,22 +470,50 @@ def run_doctor(
     # Resolve paths from config or arguments
     _data_dir = data_dir or cfg.get("data_dir", "/opt/intelfactor/data")
     _model_dir = model_dir or cfg.get("model_dir", "/opt/intelfactor/models")
-    _cam_source = camera_source or cfg.get("camera", {}).get("source", "")
-    _cam_proto = camera_protocol or cfg.get("camera", {}).get("protocol", "rtsp")
+    _cam_cfg = cfg.get("camera", {})
+    _cam_source = camera_source or _cam_cfg.get("source", "")
+    _cam_proto = camera_protocol or _cam_cfg.get("protocol", "rtsp")
     _taxonomy = taxonomy_path or cfg.get("taxonomy_path", "/opt/intelfactor/config/wiko_taxonomy.yaml")
+
+    # Determine whether vision model check is relevant
+    _vision_model = cfg.get("vision_model", "")
 
     # Run checks
     report.checks.append(_timed(lambda: check_config(config_path)))
     report.checks.append(_timed(lambda: check_disk(_data_dir)))
     report.checks.append(_timed(lambda: check_data_dir_writable(_data_dir)))
     report.checks.append(_timed(lambda: check_gpu()))
-    report.checks.append(_timed(lambda: check_vision_model(_model_dir)))
-    report.checks.append(_timed(lambda: check_language_model(_model_dir)))
+
+    # Vision model check — skip if explicitly using stub
+    if _vision_model == "stub":
+        report.checks.append(CheckResult("Vision Model", True, "stub provider — no engine required (dev mode)"))
+    else:
+        report.checks.append(_timed(lambda: check_vision_model(_model_dir)))
+
+    # Language model check — skip if explicitly using stub
+    _lang_model = cfg.get("language_model", "")
+    if _lang_model == "stub":
+        report.checks.append(CheckResult("Language Model", True, "stub provider — no GGUF required (dev mode)"))
+    else:
+        report.checks.append(_timed(lambda: check_language_model(_model_dir)))
+
     report.checks.append(_timed(lambda: check_taxonomy(_taxonomy)))
 
-    if not skip_camera and _cam_source:
-        report.checks.append(_timed(lambda: check_camera(_cam_source, _cam_proto)))
-    elif not _cam_source:
-        report.checks.append(CheckResult("Camera", False, "No source configured", "Set camera.source in station.yaml"))
+    # Camera check — dispatch by protocol
+    if not skip_camera:
+        if _cam_proto == "pyspin":
+            _serial = _cam_cfg.get("serial_number", "")
+            report.checks.append(_timed(lambda s=_serial: check_pyspin(s)))
+        elif _cam_proto == "webcam":
+            _idx = int(_cam_cfg.get("device_index", 0))
+            report.checks.append(_timed(lambda i=_idx: check_webcam(i)))
+        elif _cam_source:
+            report.checks.append(_timed(lambda src=_cam_source, proto=_cam_proto: check_camera(src, proto)))
+        else:
+            report.checks.append(CheckResult(
+                "Camera", False,
+                "No camera source configured",
+                "Set camera.source (rtsp/usb) or camera.serial_number (pyspin) in station.yaml",
+            ))
 
     return report

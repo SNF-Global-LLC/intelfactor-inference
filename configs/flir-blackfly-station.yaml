@@ -1,0 +1,94 @@
+# IntelFactor.ai — FLIR Blackfly Station Config
+# Tomorrow's office config: FLIR Blackfly S + TensorRT model.
+#
+# Preflight (run before starting):
+#   python3 -m packages.inference.cli --config configs/flir-blackfly-station.yaml --doctor
+#
+# Start:
+#   python3 -m packages.inference.cli --config configs/flir-blackfly-station.yaml --host 127.0.0.1
+#
+# UI: http://127.0.0.1:8080/inspect
+# Test: curl -X POST http://127.0.0.1:8080/api/inspect
+#
+# Swap back to Mac webcam: configs/dev-mac-station.yaml
+
+# ── Deployment Mode ────────────────────────────────────────────────
+mode: station_only
+
+# ── Station Identity ───────────────────────────────────────────────
+station_id: flir-station-1
+factory_id: office-lab
+
+# ── Paths ──────────────────────────────────────────────────────────
+# Use /tmp for a session; change to ~/intelfactor-flir/data for persistence.
+data_dir: /tmp/intelfactor-flir/data
+model_dir: /tmp/intelfactor-flir/models
+edge_yaml_path: /tmp/intelfactor-flir/config/edge.yaml
+
+# ── Camera (FLIR Blackfly S via PySpin) ───────────────────────────
+camera:
+  enabled: true
+  protocol: "pyspin"
+  serial_number: "25423789"       # your camera's serial — verify with SpinView
+  pixel_format: "Mono8"           # Mono8 for grayscale; BayerRG8 for raw color
+  width: 1920
+  height: 1200
+  exposure_auto: true             # let the camera find exposure for the first inspection
+  gain: 10.0                      # starting gain; tune for your lighting conditions
+
+# ── Vision Inference ───────────────────────────────────────────────
+# Build the engine first: make build-trt MODEL=yolov8n.onnx PRECISION=fp16
+# Engine must be built on this Jetson, not copied from another device.
+vision_model: yolov8n_trt
+confidence_threshold: 0.5
+nms_threshold: 0.45
+
+# ── Language Model (RCA) ──────────────────────────────────────────
+# Keep stub until GGUF is placed in model_dir.
+# Swap: language_model: qwen25_3b_int4
+language_model: stub
+
+# ── RCA Pipeline ──────────────────────────────────────────────────
+rca:
+  anomaly_check_interval_sec: 300
+  z_score_threshold: 2.5
+  min_events_for_baseline: 20
+  window_hours: 4.0
+
+# ── Defect Classes ─────────────────────────────────────────────────
+# Must match the trained engine's output order (0–12).
+defect_classes:
+  - blade_scratch
+  - grinding_mark
+  - surface_dent
+  - surface_crack
+  - weld_defect
+  - edge_burr
+  - edge_crack
+  - handle_defect
+  - bolster_gap
+  - etching_defect
+  - inclusion
+  - surface_discolor
+  - overgrind
+
+# ── Machine Health Copilot ────────────────────────────────────────
+machine_health:
+  enabled: false
+
+# ── Hub (not used in station_only mode) ──────────────────────────
+hub:
+  url: http://hub.local:8080
+  review_queue_enabled: false
+  cross_line_rca_enabled: false
+
+# ── Mac Webcam Reference ──────────────────────────────────────────
+# To go back to Mac webcam for testing:
+#
+#   camera:
+#     protocol: "webcam"
+#     device_index: 0
+#     warmup_frames: 3
+#   vision_model: stub
+#
+# That is configs/dev-mac-station.yaml.

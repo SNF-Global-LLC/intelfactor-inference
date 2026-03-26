@@ -122,7 +122,8 @@ def run_station():
             runtime._capture = capture
             logger.info("Capture backend ready: %s", camera_protocol)
         except Exception as exc:
-            logger.error("Capture init failed: %s", exc)
+            logger.error("Capture init failed (%s): %s", camera_protocol, exc)
+            logger.error("  Station will start but /api/inspect requires a working capture backend.")
             runtime._capture = None
 
         # Legacy continuous ingest (only for rtsp/usb/gige protocols)
@@ -169,6 +170,12 @@ def run_station():
         logger.info("Inspection sync disabled (CLOUD_API_URL not set)")
         runtime._sync_worker = None
 
+    # Ensure env vars that api_v2/metrics read are set from config if not already present
+    os.environ.setdefault("DB_PATH", str(Path(station_config.data_dir) / "local.db"))
+    os.environ.setdefault("STATION_ID", station_config.station_id)
+    os.environ.setdefault("SQLITE_DB_PATH", str(Path(station_config.data_dir) / "local.db"))
+    os.environ.setdefault("EVIDENCE_DIR", str(Path(station_config.data_dir) / "evidence"))
+
     # Start API server in background thread
     from packages.inference.api_v2 import create_app
 
@@ -196,6 +203,24 @@ def run_station():
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
+
+    # Annotate runtime with backend info so /api/status can expose it
+    _cam_backend = cam_cfg.get("protocol", "none") if camera_enabled else "disabled"
+    _capture_ok = camera_enabled and getattr(runtime, "_capture", None) is not None
+    runtime._camera_backend = _cam_backend
+    runtime._camera_connected = _capture_ok
+    runtime._vision_model_key = raw.get("vision_model", "auto")
+    runtime._language_model_key = raw.get("language_model", "auto")
+
+    # Startup summary
+    logger.info("=" * 52)
+    logger.info("  Station:  %s", station_config.station_id)
+    logger.info("  Camera:   %s (%s)", _cam_backend, "connected" if _capture_ok else "FAILED / disabled")
+    logger.info("  Vision:   %s", raw.get("vision_model", "auto"))
+    logger.info("  Language: %s", raw.get("language_model", "auto"))
+    logger.info("  Data:     %s", station_config.data_dir)
+    logger.info("  Inspect:  http://%s:%d/inspect", args.host, args.port)
+    logger.info("=" * 52)
 
     logger.info("Station ready: %s (mode=%s)", station_config.station_id, mode.value)
     logger.info("  Health: http://%s:%d/health", args.host, args.port)

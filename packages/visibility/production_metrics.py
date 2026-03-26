@@ -504,7 +504,7 @@ class ProductionMetrics:
             # Verdict counts from events table (existing)
             verdict_rows = conn.execute("""
                 SELECT verdict, COUNT(*) as cnt
-                FROM events
+                FROM defect_events
                 WHERE station_id = ? AND timestamp >= ? AND timestamp < ?
                 GROUP BY verdict
             """, (self.station_id, shift_start, shift_end)).fetchall()
