@@ -7,43 +7,69 @@ Rules:
 - REVIEW: any detection >= review_threshold (but below fail)
 - PASS: no detections above review_threshold
 - Confidence reported = max detection confidence (or 1.0 for clean PASS)
+
+Severity ranges are loaded from configs/wiko_taxonomy.yaml (canonical source).
 """
 
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from packages.inference.schemas import Detection, Verdict
 
 logger = logging.getLogger(__name__)
 
-# Severity ranges per defect type (from wiko_taxonomy.yaml)
-SEVERITY_RANGES: dict[str, tuple[float, float]] = {
-    "scratch_surface": (0.2, 0.9),
-    "scratch_edge": (0.4, 1.0),
-    "burr": (0.3, 0.8),
-    "pit_corrosion": (0.5, 1.0),
-    "discoloration": (0.2, 0.7),
-    "dent": (0.3, 0.9),
-    "crack": (0.7, 1.0),
-    "warp": (0.4, 1.0),
-    "handle_gap": (0.3, 0.8),
-    "handle_crack": (0.5, 1.0),
-    "logo_defect": (0.2, 0.6),
-    "dimension_out_of_spec": (0.4, 1.0),
-    "foreign_material": (0.2, 0.7),
-}
+
+def _load_severity_ranges() -> dict[str, tuple[float, float]]:
+    """Load severity ranges from canonical taxonomy config."""
+    ranges: dict[str, tuple[float, float]] = {}
+    config_paths = [
+        Path("/opt/intelfactor/config/wiko_taxonomy.yaml"),
+        Path(__file__).parent.parent.parent / "configs" / "wiko_taxonomy.yaml",
+    ]
+    
+    for path in config_paths:
+        if path.exists():
+            try:
+                import yaml
+                data = yaml.safe_load(path.read_text())
+                for defect_name, defect_info in data.get("defects", {}).items():
+                    if "severity_range" in defect_info:
+                        sr = defect_info["severity_range"]
+                        ranges[defect_name] = (sr[0], sr[1])
+                logger.info("Loaded severity ranges for %d defects from %s", len(ranges), path)
+                return ranges
+            except Exception as exc:
+                logger.warning("Failed to load taxonomy from %s: %s", path, exc)
+                continue
+    
+    logger.warning("No taxonomy config found, using fallback severity mapping")
+    return {}
+
+
+# Lazy-loaded on first use
+_SEVERITY_RANGES: dict[str, tuple[float, float]] | None = None
+
+
+def _get_severity_ranges() -> dict[str, tuple[float, float]]:
+    """Get cached severity ranges, loading if needed."""
+    global _SEVERITY_RANGES
+    if _SEVERITY_RANGES is None:
+        _SEVERITY_RANGES = _load_severity_ranges()
+    return _SEVERITY_RANGES
 
 
 def estimate_severity(defect_type: str, confidence: float) -> float:
     """
     Map (defect_type, confidence) to a severity score in [0, 1].
-    Uses linear interpolation within the defect's severity range.
+    Uses linear interpolation within the defect's severity range from taxonomy.
     Falls back to raw confidence for unknown types.
     """
-    if defect_type in SEVERITY_RANGES:
-        lo, hi = SEVERITY_RANGES[defect_type]
+    ranges = _get_severity_ranges()
+    if defect_type in ranges:
+        lo, hi = ranges[defect_type]
         return lo + (hi - lo) * confidence
     return confidence
 

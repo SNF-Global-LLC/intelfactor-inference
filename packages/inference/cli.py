@@ -145,7 +145,7 @@ def run_station():
     # ── Inspection Store + Sync Worker ─────────────────────────────
     from packages.inference.storage.inspection_store import InspectionStore
 
-    inspections_db = _Path(station_config.data_dir) / "inspections.db"
+    inspections_db = Path(station_config.data_dir) / "inspections.db"
     inspection_store = InspectionStore(db_path=inspections_db)
     runtime._inspection_store = inspection_store
     logger.info("Inspection store ready: %s", inspections_db)
@@ -155,7 +155,7 @@ def run_station():
     cloud_api_key = os.environ.get("CLOUD_API_KEY", "")
     if cloud_api_url:
         from packages.inference.sync_inspections import InspectionSyncWorker
-        evidence_dir = _Path(station_config.data_dir) / "evidence"
+        evidence_dir = Path(station_config.data_dir) / "evidence"
         sync_worker = InspectionSyncWorker(
             inspection_store=inspection_store,
             evidence_dir=evidence_dir,
