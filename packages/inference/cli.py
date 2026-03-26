@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import signal
 import sys
 import threading
@@ -142,7 +143,6 @@ def run_station():
         runtime._capture = None
 
     # ── Inspection Store + Sync Worker ─────────────────────────────
-    from pathlib import Path as _Path
     from packages.inference.storage.inspection_store import InspectionStore
 
     inspections_db = _Path(station_config.data_dir) / "inspections.db"

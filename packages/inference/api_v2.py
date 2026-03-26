@@ -421,13 +421,15 @@ def create_app(
 
         # Persist to inspection store
         store = getattr(app.runtime, "_inspection_store", None) if app.runtime else None
-        if store:
-            updated = store.update_feedback(
-                inspection_id, accepted=accepted,
-                operator_id=operator_id, reason=reason, notes=notes,
-            )
-            if not updated:
-                return jsonify({"error": "Inspection not found"}), 404
+        if not store:
+            return jsonify({"error": "Inspection store not available"}), 503
+
+        updated = store.update_feedback(
+            inspection_id, accepted=accepted,
+            operator_id=operator_id, reason=reason, notes=notes,
+        )
+        if not updated:
+            return jsonify({"error": "Inspection not found"}), 404
 
         return jsonify({
             "status": "recorded",

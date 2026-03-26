@@ -39,6 +39,7 @@ class InspectionSyncWorker:
         CLOUD_API_KEY: API key for authentication
         SYNC_INTERVAL_SEC: Seconds between sync cycles (default: 30)
         SYNC_BATCH_SIZE: Max inspections per cycle (default: 20)
+        SYNC_MAX_RETRIES: Max retry attempts before marking permanent failure (default: 10)
     """
 
     def __init__(
@@ -49,6 +50,7 @@ class InspectionSyncWorker:
         cloud_api_key: str = "",
         sync_interval_sec: int = 30,
         batch_size: int = 20,
+        max_retries: int = 10,
     ):
         self.store = inspection_store
         self.evidence_dir = Path(evidence_dir)
@@ -56,13 +58,16 @@ class InspectionSyncWorker:
         self.api_key = cloud_api_key
         self.sync_interval = sync_interval_sec
         self.batch_size = batch_size
+        self.max_retries = max_retries
 
         self._running = False
         self._thread: threading.Thread | None = None
+        self._retry_counts: dict[str, int] = {}  # Track retries per inspection
         self._stats = {
             "cycles": 0,
             "synced": 0,
             "failed": 0,
+            "permanent_failures": 0,
             "last_cycle": None,
         }
 
@@ -115,11 +120,29 @@ class InspectionSyncWorker:
         logger.info("Sync cycle: %d pending inspections", len(pending))
 
         for event in pending:
+            # Check retry limit
+            retry_count = self._retry_counts.get(event.inspection_id, 0)
+            if retry_count >= self.max_retries:
+                logger.warning(
+                    "Inspection %s exceeded max retries (%d), marking permanent failure",
+                    event.inspection_id, self.max_retries
+                )
+                self.store.update_sync_status(
+                    event.inspection_id,
+                    SyncStatus.PERMANENT_ERROR,
+                    error=f"Max retries ({self.max_retries}) exceeded",
+                )
+                self._stats["permanent_failures"] += 1
+                continue
+
             try:
                 self._sync_one(event)
                 self._stats["synced"] += 1
+                self._retry_counts.pop(event.inspection_id, None)  # Clear retry count on success
             except Exception as exc:
-                logger.error("Sync failed for %s: %s", event.inspection_id, exc)
+                logger.error("Sync failed for %s (retry %d/%d): %s", 
+                           event.inspection_id, retry_count + 1, self.max_retries, exc)
+                self._retry_counts[event.inspection_id] = retry_count + 1
                 self.store.update_sync_status(
                     event.inspection_id,
                     SyncStatus.FAILED,

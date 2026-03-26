@@ -38,6 +38,7 @@ class SyncStatus(str, Enum):
     UPLOADING = "uploading"
     SYNCED = "synced"
     FAILED = "failed"
+    PERMANENT_ERROR = "permanent_error"  # Exceeded max retry attempts
 
 
 class DeviceClass(str, Enum):

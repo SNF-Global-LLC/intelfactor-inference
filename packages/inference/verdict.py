@@ -50,16 +50,16 @@ def estimate_severity(defect_type: str, confidence: float) -> float:
 
 def evaluate_verdict(
     detections: list[Detection],
-    fail_threshold: float = 0.5,
-    review_threshold: float = 0.3,
+    fail_threshold: float = 0.85,
+    review_threshold: float = 0.50,
 ) -> tuple[Verdict, float, list[Detection]]:
     """
     Evaluate inspection verdict from a list of detections.
 
     Args:
         detections: Raw detections from vision provider.
-        fail_threshold: Confidence >= this triggers FAIL.
-        review_threshold: Confidence >= this (but < fail) triggers REVIEW.
+        fail_threshold: Confidence >= this triggers FAIL (default: 0.85 per CLAUDE.md).
+        review_threshold: Confidence >= this (but < fail) triggers REVIEW (default: 0.50).
 
     Returns:
         (verdict, confidence, enriched_detections)

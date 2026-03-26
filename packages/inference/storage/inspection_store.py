@@ -71,11 +71,13 @@ class InspectionStore:
     """
     SQLite store for inspection events.
     Thread-safe. WAL mode. One DB file per station.
+    Uses connection pooling for efficiency.
     """
 
     def __init__(self, db_path: str | Path):
         self.db_path = str(db_path)
         self._lock = threading.Lock()
+        self._local = threading.local()
 
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         conn = self._connect()
@@ -92,6 +94,12 @@ class InspectionStore:
         conn.execute("PRAGMA synchronous=NORMAL")
         return conn
 
+    def _get_conn(self) -> sqlite3.Connection:
+        """Get thread-local connection (pooled per thread)."""
+        if not hasattr(self._local, "conn") or self._local.conn is None:
+            self._local.conn = self._connect()
+        return self._local.conn
+
     def save(self, event: InspectionEvent) -> None:
         """Insert or replace an inspection event."""
         detections_json = json.dumps([
@@ -107,65 +115,59 @@ class InspectionStore:
         ], ensure_ascii=False)
 
         with self._lock:
-            conn = self._connect()
-            try:
-                conn.execute("""
-                    INSERT OR REPLACE INTO inspections (
-                        inspection_id, timestamp, station_id, workspace_id,
-                        product_id, operator_id, decision, confidence,
-                        detections_json, num_detections,
-                        image_original_path, image_annotated_path, report_path,
-                        image_original_url, image_annotated_url,
-                        model_version, model_name,
-                        capture_ms, inference_ms, total_ms,
-                        accepted, rejection_reason, notes,
-                        sync_status, sync_error, synced_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    event.inspection_id,
-                    event.timestamp.isoformat() if event.timestamp else datetime.now(tz=timezone.utc).isoformat(),
-                    event.station_id,
-                    event.workspace_id,
-                    event.product_id,
-                    event.operator_id,
-                    event.decision.value if isinstance(event.decision, Verdict) else event.decision,
-                    event.confidence,
-                    detections_json,
-                    event.num_detections,
-                    event.image_original_path,
-                    event.image_annotated_path,
-                    event.report_path,
-                    event.image_original_url,
-                    event.image_annotated_url,
-                    event.model_version,
-                    event.model_name,
-                    event.capture_ms,
-                    event.inference_ms,
-                    event.total_ms,
-                    1 if event.accepted is True else (0 if event.accepted is False else None),
-                    event.rejection_reason,
-                    event.notes,
-                    event.sync_status.value if isinstance(event.sync_status, SyncStatus) else event.sync_status,
-                    event.sync_error,
-                    event.synced_at.isoformat() if event.synced_at else None,
-                ))
-                conn.commit()
-            finally:
-                conn.close()
+            conn = self._get_conn()
+            conn.execute("""
+                INSERT OR REPLACE INTO inspections (
+                    inspection_id, timestamp, station_id, workspace_id,
+                    product_id, operator_id, decision, confidence,
+                    detections_json, num_detections,
+                    image_original_path, image_annotated_path, report_path,
+                    image_original_url, image_annotated_url,
+                    model_version, model_name,
+                    capture_ms, inference_ms, total_ms,
+                    accepted, rejection_reason, notes,
+                    sync_status, sync_error, synced_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                event.inspection_id,
+                event.timestamp.isoformat() if event.timestamp else datetime.now(tz=timezone.utc).isoformat(),
+                event.station_id,
+                event.workspace_id,
+                event.product_id,
+                event.operator_id,
+                event.decision.value if isinstance(event.decision, Verdict) else event.decision,
+                event.confidence,
+                detections_json,
+                event.num_detections,
+                event.image_original_path,
+                event.image_annotated_path,
+                event.report_path,
+                event.image_original_url,
+                event.image_annotated_url,
+                event.model_version,
+                event.model_name,
+                event.capture_ms,
+                event.inference_ms,
+                event.total_ms,
+                1 if event.accepted is True else (0 if event.accepted is False else None),
+                event.rejection_reason,
+                event.notes,
+                event.sync_status.value if isinstance(event.sync_status, SyncStatus) else event.sync_status,
+                event.sync_error,
+                event.synced_at.isoformat() if event.synced_at else None,
+            ))
+            conn.commit()
 
     def get(self, inspection_id: str) -> InspectionEvent | None:
         """Fetch one inspection by ID."""
-        conn = self._connect()
-        try:
-            row = conn.execute(
-                "SELECT * FROM inspections WHERE inspection_id = ?",
-                (inspection_id,),
-            ).fetchone()
-            if row is None:
-                return None
-            return self._row_to_event(row)
-        finally:
-            conn.close()
+        conn = self._get_conn()
+        row = conn.execute(
+            "SELECT * FROM inspections WHERE inspection_id = ?",
+            (inspection_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return self._row_to_event(row)
 
     def list_inspections(
         self,
@@ -192,24 +194,18 @@ class InspectionStore:
         sql = f"SELECT * FROM inspections WHERE {where} ORDER BY timestamp DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
 
-        conn = self._connect()
-        try:
-            rows = conn.execute(sql, params).fetchall()
-            return [self._row_to_event(r) for r in rows]
-        finally:
-            conn.close()
+        conn = self._get_conn()
+        rows = conn.execute(sql, params).fetchall()
+        return [self._row_to_event(r) for r in rows]
 
     def get_pending_sync(self, limit: int = 50) -> list[InspectionEvent]:
         """Get inspections waiting to be synced."""
-        conn = self._connect()
-        try:
-            rows = conn.execute(
-                "SELECT * FROM inspections WHERE sync_status IN ('pending', 'failed') ORDER BY timestamp ASC LIMIT ?",
-                (limit,),
-            ).fetchall()
-            return [self._row_to_event(r) for r in rows]
-        finally:
-            conn.close()
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT * FROM inspections WHERE sync_status IN ('pending', 'failed') ORDER BY timestamp ASC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [self._row_to_event(r) for r in rows]
 
     def update_sync_status(
         self,
@@ -221,24 +217,21 @@ class InspectionStore:
     ) -> None:
         """Update sync status after upload attempt."""
         with self._lock:
-            conn = self._connect()
-            try:
-                synced_at = datetime.now(tz=timezone.utc).isoformat() if status == SyncStatus.SYNCED else None
-                conn.execute("""
-                    UPDATE inspections
-                    SET sync_status = ?, sync_error = ?, synced_at = ?,
-                        image_original_url = CASE WHEN ? != '' THEN ? ELSE image_original_url END,
-                        image_annotated_url = CASE WHEN ? != '' THEN ? ELSE image_annotated_url END
-                    WHERE inspection_id = ?
-                """, (
-                    status.value, error, synced_at,
-                    image_original_url, image_original_url,
-                    image_annotated_url, image_annotated_url,
-                    inspection_id,
-                ))
-                conn.commit()
-            finally:
-                conn.close()
+            conn = self._get_conn()
+            synced_at = datetime.now(tz=timezone.utc).isoformat() if status == SyncStatus.SYNCED else None
+            conn.execute("""
+                UPDATE inspections
+                SET sync_status = ?, sync_error = ?, synced_at = ?,
+                    image_original_url = CASE WHEN ? != '' THEN ? ELSE image_original_url END,
+                    image_annotated_url = CASE WHEN ? != '' THEN ? ELSE image_annotated_url END
+                WHERE inspection_id = ?
+            """, (
+                status.value, error, synced_at,
+                image_original_url, image_original_url,
+                image_annotated_url, image_annotated_url,
+                inspection_id,
+            ))
+            conn.commit()
 
     def update_feedback(
         self,
@@ -250,43 +243,37 @@ class InspectionStore:
     ) -> bool:
         """Record operator feedback on an inspection."""
         with self._lock:
-            conn = self._connect()
-            try:
-                cur = conn.execute("""
-                    UPDATE inspections
-                    SET accepted = ?, rejection_reason = ?, notes = ?,
-                        operator_id = CASE WHEN ? != '' THEN ? ELSE operator_id END,
-                        sync_status = CASE WHEN sync_status = 'synced' THEN 'pending' ELSE sync_status END
-                    WHERE inspection_id = ?
-                """, (
-                    1 if accepted else 0,
-                    reason, notes,
-                    operator_id, operator_id,
-                    inspection_id,
-                ))
-                conn.commit()
-                return cur.rowcount > 0
-            finally:
-                conn.close()
+            conn = self._get_conn()
+            cur = conn.execute("""
+                UPDATE inspections
+                SET accepted = ?, rejection_reason = ?, notes = ?,
+                    operator_id = CASE WHEN ? != '' THEN ? ELSE operator_id END,
+                    sync_status = CASE WHEN sync_status = 'synced' THEN 'pending' ELSE sync_status END
+                WHERE inspection_id = ?
+            """, (
+                1 if accepted else 0,
+                reason, notes,
+                operator_id, operator_id,
+                inspection_id,
+            ))
+            conn.commit()
+            return cur.rowcount > 0
 
     def get_stats(self) -> dict[str, Any]:
         """Get inspection store statistics."""
-        conn = self._connect()
-        try:
-            total = conn.execute("SELECT COUNT(*) FROM inspections").fetchone()[0]
-            by_decision = {}
-            for row in conn.execute("SELECT decision, COUNT(*) as cnt FROM inspections GROUP BY decision"):
-                by_decision[row["decision"]] = row["cnt"]
-            by_sync = {}
-            for row in conn.execute("SELECT sync_status, COUNT(*) as cnt FROM inspections GROUP BY sync_status"):
-                by_sync[row["sync_status"]] = row["cnt"]
-            return {
-                "total": total,
-                "by_decision": by_decision,
-                "by_sync_status": by_sync,
-            }
-        finally:
-            conn.close()
+        conn = self._get_conn()
+        total = conn.execute("SELECT COUNT(*) FROM inspections").fetchone()[0]
+        by_decision = {}
+        for row in conn.execute("SELECT decision, COUNT(*) as cnt FROM inspections GROUP BY decision"):
+            by_decision[row["decision"]] = row["cnt"]
+        by_sync = {}
+        for row in conn.execute("SELECT sync_status, COUNT(*) as cnt FROM inspections GROUP BY sync_status"):
+            by_sync[row["sync_status"]] = row["cnt"]
+        return {
+            "total": total,
+            "by_decision": by_decision,
+            "by_sync_status": by_sync,
+        }
 
     def _row_to_event(self, row: sqlite3.Row) -> InspectionEvent:
         """Convert a SQLite row to InspectionEvent."""
