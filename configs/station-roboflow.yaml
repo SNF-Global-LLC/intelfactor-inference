@@ -1,0 +1,127 @@
+# IntelFactor.ai — Station Configuration with Roboflow Hosted Inference
+# 
+# THIS IS A TEMPORARY CONFIGURATION for development/testing.
+# Use this to get real defect predictions immediately while training
+# your own local TensorRT model in parallel.
+#
+# Swap to local TensorRT later by changing vision_model to yolov8n_trt.
+
+# ── Deployment Mode ────────────────────────────────────────────────────
+mode: station_only
+
+# ── Station Identity ───────────────────────────────────────────────────
+station_id: station_1
+factory_id: wiko_yangjiang_main
+
+# ── Paths ──────────────────────────────────────────────────────────────
+data_dir: /opt/intelfactor/data
+model_dir: /opt/intelfactor/models
+edge_yaml_path: /opt/intelfactor/config/edge.yaml
+
+# ── Camera ─────────────────────────────────────────────────────────────
+camera:
+  enabled: true
+  protocol: "file"                # Change to "pyspin" on Jetson with FLIR
+  serial_number: "25423789"
+  pixel_format: "Mono8"
+  width: 1920
+  height: 1200
+  exposure_auto: true
+  gain: 10.0
+  frame_rate: 30.0
+
+# ── Vision Inference ───────────────────────────────────────────────────
+# vision_model options:
+#   - stub               : No inference (dev mode)
+#   - roboflow_hosted    : Roboflow API (temporary — use now for real predictions)
+#   - yolov8n_trt        : Local TensorRT (production — after training)
+#   - yolov8s_trt        : Local TensorRT (larger model)
+#   - yolo26_trt         : Local TensorRT (YOLO26 architecture)
+
+vision_model: roboflow_hosted
+confidence_threshold: 0.5
+nms_threshold: 0.45
+fail_threshold: 0.85      # >0.85 = auto-FAIL
+review_threshold: 0.50    # 0.50-0.85 = REVIEW (human verify)
+
+# ── Roboflow Configuration ─────────────────────────────────────────────
+# Required when vision_model: roboflow_hosted
+# Get these from your Roboflow account: https://app.roboflow.com
+roboflow_api_key: ${ROBOFLOW_API_KEY}        # Workspace-scoped key; expand from env at load time
+roboflow_workspace: intelfactor-aj2un       # Workspace owning the workflow and API key
+roboflow_workflow_id: detect-and-classify-4 # Workflow ID from Roboflow Workflows
+roboflow_api_url: https://serverless.roboflow.com  # Hosted workflow API base URL
+roboflow_use_cache: true
+roboflow_experimental_mode: true           # Label hosted inference as experimental in UI/logs
+roboflow_verdict_policy: review_only       # Clamp hosted FAILs to REVIEW during calibration
+roboflow_log_raw_output: true              # Persist sanitized raw Roboflow outputs in report JSON
+
+# Legacy direct-model mode (keep commented unless you are using detect.roboflow.com)
+# roboflow_project: your-project
+# roboflow_version: 1
+
+# ── Taxonomy Mapping ───────────────────────────────────────────────────
+# Map Roboflow class names to canonical runtime class names.
+# This ensures predictions align with SOP mappings and severity rules.
+#
+# If your Roboflow model uses different class names than the canonical
+# list below, add mappings here. Only map classes that differ.
+#
+# Example:
+#   Roboflow returns: "scratch" → Runtime expects: "blade_scratch"
+class_name_map:
+  # Roboflow class : Canonical class
+  "Scratches": "blade_scratch"
+  "scratches": "blade_scratch"
+
+# ── Canonical Defect Classes (13 classes) ──────────────────────────────
+# These must match your Roboflow model's classes (after mapping).
+# Order = class IDs from training. Do not reorder.
+defect_classes:
+  - blade_scratch      # 0
+  - grinding_mark      # 1
+  - surface_dent       # 2
+  - surface_crack      # 3
+  - weld_defect        # 4
+  - edge_burr          # 5
+  - edge_crack         # 6
+  - handle_defect      # 7
+  - bolster_gap        # 8
+  - etching_defect     # 9
+  - inclusion          # 10
+  - surface_discolor   # 11
+  - overgrind          # 12
+
+# ── Language Model (RCA) ──────────────────────────────────────────────
+language_model: qwen25_3b_int4
+temperature: 0.3
+
+# ── RCA Pipeline ──────────────────────────────────────────────────────
+rca:
+  anomaly_check_interval_sec: 300
+  z_score_threshold: 2.5
+  min_events_for_baseline: 20
+  window_hours: 4.0
+
+# ── SOP Mapping ────────────────────────────────────────────────────────
+sop_map:
+  defect_sops:
+    blade_scratch:     "SOP 4.2.3"
+    grinding_mark:     "SOP 4.2.3"
+    surface_dent:      "SOP 3.2.4"
+    surface_crack:     "SOP 2.1.1"
+    weld_defect:       "SOP 4.6.2"
+    edge_burr:         "SOP 3.4.2"
+    edge_crack:        "SOP 4.3.1"
+    handle_defect:     "SOP 6.2.1"
+    bolster_gap:       "SOP 6.1.3"
+    etching_defect:    "SOP 7.1.1"
+    inclusion:         "SOP 5.3.1"
+    surface_discolor:  "SOP 5.2.1"
+    overgrind:         "SOP 4.6.5"
+
+# ── Monitoring ─────────────────────────────────────────────────────────
+monitoring:
+  prometheus_port: 9090
+  health_check_port: 8081
+  log_level: INFO

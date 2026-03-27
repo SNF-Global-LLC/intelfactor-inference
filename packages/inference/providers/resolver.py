@@ -15,6 +15,7 @@ from typing import Any
 from packages.inference.providers.base import LanguageProvider, VisionProvider
 from packages.inference.providers.language_llama import LlamaCppLanguageProvider
 from packages.inference.providers.language_vllm import VLLMLanguageProvider
+from packages.inference.providers.vision_roboflow import RoboflowHostedVisionProvider
 from packages.inference.providers.vision_trt import TensorRTVisionProvider
 from packages.inference.schemas import (
     DeviceCapabilities,
@@ -213,6 +214,18 @@ class CapabilityResolver:
             from packages.inference.providers.stub import StubVisionProvider
             merged_config = {**self.config, **(provider_config or {})}
             return StubVisionProvider(config=merged_config)
+
+        # Roboflow hosted mode — temporary bridge to real predictions
+        if model_key == "roboflow_hosted":
+            merged_config = {**self.config, **(provider_config or {})}
+            spec = ModelSpec(
+                model_name="roboflow-hosted",
+                model_path="https://detect.roboflow.com",
+                quantization="FP16",
+                backend=InferenceBackend.TENSORRT,
+                expected_latency_ms=500,
+            )
+            return RoboflowHostedVisionProvider(spec, merged_config)
 
         # Allow config override
         if model_key and model_key in VISION_MODELS:
