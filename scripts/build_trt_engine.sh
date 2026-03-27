@@ -167,7 +167,7 @@ info "Device: $DEVICE_MODEL ($DEVICE_ARCH)"
 # ── Prepare ONNX ──────────────────────────────────────────────────────────────
 MODEL_EXT="${MODEL_PATH##*.}"
 MODEL_BASENAME=$(basename "$MODEL_PATH" ".$MODEL_EXT")
-BUILD_TMP=$(mktemp -d)
+BUILD_TMP=$(mktemp -d -m 700)
 trap 'rm -rf "$BUILD_TMP"' EXIT
 
 if [[ "$MODEL_EXT" == "pt" ]]; then

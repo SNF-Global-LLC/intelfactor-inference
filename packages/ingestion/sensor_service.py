@@ -165,6 +165,11 @@ class SensorService:
         on_event: Callable[[SensorEvent], None] | None = None,
         warning_threshold: float = 2.0,
         critical_threshold: float = 3.5,
+        mqtt_username: str = "",
+        mqtt_password: str = "",
+        mqtt_tls_ca: str = "",
+        mqtt_tls_cert: str = "",
+        mqtt_tls_key: str = "",
     ):
         self.station_id = station_id
         self.db_path = Path(db_path)
@@ -172,6 +177,11 @@ class SensorService:
 
         self.mqtt_host = mqtt_host
         self.mqtt_port = mqtt_port
+        self.mqtt_username = mqtt_username
+        self.mqtt_password = mqtt_password
+        self.mqtt_tls_ca = mqtt_tls_ca
+        self.mqtt_tls_cert = mqtt_tls_cert
+        self.mqtt_tls_key = mqtt_tls_key
         self.topics = mqtt_topics or DEFAULT_TOPICS
         self.on_event = on_event  # optional upstream callback (e.g. feed MaintenanceIQ)
         self.warning_threshold = warning_threshold
@@ -754,6 +764,19 @@ class SensorService:
         client.on_connect = self._on_mqtt_connect
         client.on_message = self._on_mqtt_message
         client.on_disconnect = self._on_mqtt_disconnect
+
+        # TLS configuration
+        if self.mqtt_tls_ca:
+            client.tls_set(
+                ca_certs=self.mqtt_tls_ca,
+                certfile=self.mqtt_tls_cert or None,
+                keyfile=self.mqtt_tls_key or None,
+            )
+            logger.info("MQTT TLS enabled (ca=%s)", self.mqtt_tls_ca)
+
+        # Authentication
+        if self.mqtt_username:
+            client.username_pw_set(self.mqtt_username, self.mqtt_password)
 
         try:
             client.connect(self.mqtt_host, self.mqtt_port, keepalive=60)

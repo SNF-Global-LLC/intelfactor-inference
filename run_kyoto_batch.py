@@ -6,16 +6,17 @@ Uses Roboflow Python SDK
 
 import csv
 import json
+import os
 import time
 from pathlib import Path
 
 from roboflow import Roboflow
 
-# Configuration
-API_KEY = "REDACTED_KEY"
-WORKSPACE = "intelfactor-aj2un"
-PROJECT = "metal-surface-defects-rmbhy-szb6t"
-VERSION = 6
+# Configuration — all secrets via environment variables
+API_KEY = os.environ.get("ROBOFLOW_API_KEY", "")
+WORKSPACE = os.environ.get("ROBOFLOW_WORKSPACE", "intelfactor-aj2un")
+PROJECT = os.environ.get("ROBOFLOW_PROJECT", "metal-surface-defects-rmbhy-szb6t")
+VERSION = int(os.environ.get("ROBOFLOW_VERSION", "6"))
 
 INPUT_DIR = Path("kyoto_eval_set")
 OUTPUT_DIR = Path("kyoto_raw_outputs")
@@ -145,6 +146,10 @@ def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     
     # Initialize Roboflow
+    if not API_KEY:
+        print("ERROR: ROBOFLOW_API_KEY environment variable not set.")
+        print("  export ROBOFLOW_API_KEY='your-key-here'")
+        return
     print("Connecting to Roboflow...")
     rf = Roboflow(api_key=API_KEY)
     workspace = rf.workspace(WORKSPACE)

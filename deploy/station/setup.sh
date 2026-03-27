@@ -131,8 +131,8 @@ fi
 echo ""
 echo "[6/6] Setting permissions..."
 chown -R "$STATION_USER:$STATION_USER" "$INSTALL_DIR"
-chmod -R 755 "$INSTALL_DIR"
-chmod -R 770 "$INSTALL_DIR/data"
+chmod -R 750 "$INSTALL_DIR"
+chmod -R 700 "$INSTALL_DIR/data"
 echo "  ✓ Ownership: $STATION_USER"
 
 if [ "$NO_START" = false ]; then

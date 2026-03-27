@@ -15,10 +15,15 @@ COPY . .
 # Install project with sync extras (boto3, requests, tenacity)
 RUN pip install --no-cache-dir ".[sync]"
 
+# Create non-root user
+RUN useradd --system --no-create-home --shell /usr/sbin/nologin appuser
+
 # Environment defaults
 ENV SYNC_INTERVAL_SEC=300
 ENV SYNC_BATCH_SIZE=100
 ENV PYTHONPATH=/app
+
+USER appuser
 
 # Run sync agent
 CMD ["python", "-m", "packages.inference.sync_cloud"]

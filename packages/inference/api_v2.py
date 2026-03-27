@@ -84,6 +84,28 @@ def create_app(
     # Get evidence directory from env
     evidence_dir = Path(os.environ.get("EVIDENCE_DIR", "/opt/intelfactor/data/evidence"))
 
+    # ── Security helpers ──────────────────────────────────────────────
+    _MAX_LIMIT = 1000
+
+    def _safe_limit() -> int:
+        """Parse and cap the ?limit= query parameter."""
+        raw = request.args.get("limit", 50, type=int)
+        return max(1, min(raw, _MAX_LIMIT))
+
+    def _safe_offset() -> int:
+        """Parse and floor the ?offset= query parameter."""
+        raw = request.args.get("offset", 0, type=int)
+        return max(0, raw)
+
+    def _resolve_evidence_path(relative_path: str) -> Path | None:
+        """Resolve a relative evidence path, rejecting traversal attempts."""
+        full = (evidence_dir / relative_path).resolve()
+        try:
+            full.relative_to(evidence_dir.resolve())
+        except ValueError:
+            return None  # path escapes evidence_dir
+        return full if full.exists() else None
+
     # Initialize production metrics
     db_path = os.environ.get("DB_PATH", "/opt/intelfactor/data/local.db")
     station_id = os.environ.get("STATION_ID", "SNF-Vision-1")
@@ -153,7 +175,7 @@ def create_app(
     @app.route("/api/events", methods=["GET"])
     def list_events():
         """Get recent detection events."""
-        limit = request.args.get("limit", 50, type=int)
+        limit = _safe_limit()
         verdict = request.args.get("verdict")  # PASS, FAIL, REVIEW
         station_id = request.args.get("station_id")
 
@@ -185,8 +207,9 @@ def create_app(
             # Feed production metrics
             metrics.on_event(data)
             return jsonify({"status": "created", "event_id": event_id}), 201
-        except ValueError as e:
-            return jsonify({"error": str(e)}), 400
+        except ValueError:
+            logger.exception("Event insertion failed")
+            return jsonify({"error": "Invalid event data"}), 400
 
     # ── Evidence Endpoints ──────────────────────────────────────────
 
@@ -251,6 +274,8 @@ def create_app(
         total_bytes = 0
         date_dirs = []
         for d in evidence_dir.iterdir():
+            if d.is_symlink():
+                continue
             if d.is_dir() and len(d.name) == 10:  # YYYY-MM-DD
                 date_dirs.append(d.name)
                 for f in d.rglob("*"):
@@ -258,7 +283,6 @@ def create_app(
                         total_bytes += f.stat().st_size
 
         return jsonify({
-            "evidence_dir": str(evidence_dir),
             "total_bytes": total_bytes,
             "total_mb": round(total_bytes / (1024 * 1024), 1),
             "date_dirs": len(date_dirs),
@@ -270,7 +294,7 @@ def create_app(
     @app.route("/api/triples", methods=["GET"])
     def list_triples():
         """Get causal triples."""
-        limit = request.args.get("limit", 50, type=int)
+        limit = _safe_limit()
         status = request.args.get("status")
         station_id = request.args.get("station_id")
 
@@ -471,8 +495,8 @@ def create_app(
         event = store.get(inspection_id)
         if not event or not event.image_original_path:
             abort(404)
-        full_path = evidence_dir / event.image_original_path
-        if not full_path.exists():
+        full_path = _resolve_evidence_path(event.image_original_path)
+        if full_path is None:
             abort(404)
         return send_file(str(full_path), mimetype="image/jpeg")
 
@@ -485,8 +509,8 @@ def create_app(
         event = store.get(inspection_id)
         if not event or not event.image_annotated_path:
             abort(404)
-        full_path = evidence_dir / event.image_annotated_path
-        if not full_path.exists():
+        full_path = _resolve_evidence_path(event.image_annotated_path)
+        if full_path is None:
             abort(404)
         return send_file(str(full_path), mimetype="image/jpeg")
 
@@ -540,8 +564,8 @@ def create_app(
             station_id=request.args.get("station_id"),
             decision=request.args.get("decision"),
             sync_status=request.args.get("sync_status"),
-            limit=int(request.args.get("limit", 50)),
-            offset=int(request.args.get("offset", 0)),
+            limit=_safe_limit(),
+            offset=_safe_offset(),
         )
 
         return jsonify({

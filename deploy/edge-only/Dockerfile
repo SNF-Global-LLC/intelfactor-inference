@@ -33,9 +33,15 @@ ENV API_HOST=0.0.0.0
 ENV API_PORT=8080
 ENV PYTHONPATH=/app
 
+# Create non-root user
+RUN useradd --system --no-create-home --shell /usr/sbin/nologin appuser \
+    && chown -R appuser:appuser /data /opt/intelfactor/config
+
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
+
+USER appuser
 
 # Run the station (calls run_station() which starts runtime + API)
 CMD ["python", "-c", "from packages.inference.cli import run_station; run_station()"]

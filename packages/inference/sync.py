@@ -40,7 +40,7 @@ class SyncService:
     def __init__(
         self,
         station_data_dir: str = "/station-data",
-        database_url: str = "postgresql://intelfactor:changeme@localhost:5432/intelfactor",
+        database_url: str = "",
         sync_interval_sec: int = 300,
     ):
         self.station_data_dir = Path(station_data_dir)
@@ -51,6 +51,10 @@ class SyncService:
 
     def start(self) -> None:
         """Connect to Postgres and start sync loop."""
+        if not self.database_url:
+            raise RuntimeError(
+                "DATABASE_URL is required. Set it in the environment or pass database_url=."
+            )
         self._connect_pg()
         self._load_watermarks()
         logger.info(
@@ -264,7 +268,7 @@ def main():
 
     service = SyncService(
         station_data_dir=os.environ.get("STATION_DATA_DIR", "/station-data"),
-        database_url=os.environ.get("DATABASE_URL", "postgresql://intelfactor:changeme@postgres:5432/intelfactor"),
+        database_url=os.environ.get("DATABASE_URL", ""),
         sync_interval_sec=int(os.environ.get("SYNC_INTERVAL_SEC", "300")),
     )
     service.start()

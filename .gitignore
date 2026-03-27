@@ -42,8 +42,19 @@ Thumbs.db
 
 # Secrets
 .env
+.env.*
+!.env.example
 *.pem
 *.key
+credentials*.json
+
+# Sensitive infrastructure files
+.azure_vm_ip
+azure_quota_email.txt
+vm_create_output.json
+
+# One-off scripts with potential secrets
+run_kyoto_batch.py
 
 # Logs
 *.log

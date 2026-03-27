@@ -192,7 +192,7 @@ deploy_hub() {
 
     log_info "✓ Hub deployment complete"
     echo ""
-    echo -e "${GREEN}Grafana:${NC}    http://localhost:3000 (admin/changeme)"
+    echo -e "${GREEN}Grafana:${NC}    http://localhost:3000 (admin/<GRAFANA_PASSWORD from .env>)"
     echo -e "${GREEN}Prometheus:${NC} http://localhost:9090"
     echo -e "${GREEN}MinIO:${NC}      http://localhost:9001"
     echo -e "${GREEN}Postgres:${NC}   localhost:5432"
