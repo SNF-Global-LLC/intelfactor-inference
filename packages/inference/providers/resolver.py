@@ -58,6 +58,15 @@ _CANONICAL_DEFECT_CLASSES: list[str] = [
 # model_path is resolved at runtime from config or model registry.
 
 VISION_MODELS: dict[str, dict[str, Any]] = {
+    "roboflow_hosted": {
+        "name": "roboflow-hosted",
+        "quantization": "FP16",
+        "backend": InferenceBackend.TENSORRT,
+        "expected_latency_ms": 4000,
+        "min_vram_mb": 0,
+        "defect_classes": _CANONICAL_DEFECT_CLASSES,
+        "description": "TEMPORARY: Roboflow API inference. Swap to local TensorRT for production.",
+    },
     "yolov8n_trt": {
         "name": "yolov8n-cutlery-v3",
         "quantization": "FP16",
