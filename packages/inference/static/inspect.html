@@ -255,13 +255,19 @@ function renderResult(r) {
   // Verdict banner
   const banner = document.getElementById('verdictBanner');
   const verdict = r.verdict || r.decision || 'UNKNOWN';
+  const provider = r.provider || {};
   banner.className = 'verdict-banner verdict-' + verdict;
   const confPct = ((r.confidence || 0) * 100).toFixed(0) + '%';
   const iid = r.inspection_id || '';
   const ts = r.timestamp ? new Date(r.timestamp).toLocaleTimeString() : '';
+  const providerNote = provider.experimental
+    ? '<div class="verdict-meta">Experimental hosted model · policy: '
+      + (provider.verdict_policy || 'default') + '</div>'
+    : '';
   banner.innerHTML = '<div class="verdict-label">' + verdict + '</div>'
     + '<div class="verdict-conf">Confidence: ' + confPct + '</div>'
-    + (iid ? '<div class="verdict-meta">' + iid + (ts ? '  ·  ' + ts : '') + '</div>' : '');
+    + (iid ? '<div class="verdict-meta">' + iid + (ts ? '  ·  ' + ts : '') + '</div>' : '')
+    + providerNote;
 
   // Image
   const img = document.getElementById('inspectImage');
@@ -425,10 +431,16 @@ async function loadStatus() {
     // Model badge
     const visionKey = d.vision_model_key || d.vision_backend || '—';
     const isStub = d.vision_is_stub;
+    const modelLabel = d.vision_provider_label || visionKey;
+    const modelDetail = d.vision_provider_detail ? ' · ' + d.vision_provider_detail : '';
+    const isExperimental = !!d.vision_provider_experimental;
+    const policySuffix = d.vision_provider_policy && isExperimental
+      ? ' · policy=' + d.vision_provider_policy
+      : '';
     document.getElementById('badgeModelVal').textContent =
-      isStub ? 'stub (dev)' : visionKey;
+      isStub ? 'stub (dev)' : (modelLabel + modelDetail + policySuffix);
     document.getElementById('badgeModel').className =
-      'status-badge' + (isStub ? ' warn' : '');
+      'status-badge' + (isStub || isExperimental ? ' warn' : '');
 
     // Ready badge
     const captureReady = camConnected || camBackend === 'disabled';

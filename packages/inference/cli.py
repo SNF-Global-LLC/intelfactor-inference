@@ -26,16 +26,27 @@ logging.basicConfig(
 logger = logging.getLogger("intelfactor")
 
 
+def _expand_env_vars(value: Any) -> Any:
+    """Recursively expand ${ENV_VAR} placeholders in loaded config values."""
+    if isinstance(value, dict):
+        return {k: _expand_env_vars(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_expand_env_vars(v) for v in value]
+    if isinstance(value, str):
+        return os.path.expandvars(value)
+    return value
+
+
 def _load_yaml(path: str) -> dict[str, Any]:
     """Load YAML config file."""
     try:
         import yaml
         with open(path) as f:
-            return yaml.safe_load(f) or {}
+            return _expand_env_vars(yaml.safe_load(f) or {})
     except ImportError:
         import json
         with open(path) as f:
-            return json.load(f)
+            return _expand_env_vars(json.load(f))
 
 
 def run_station():
@@ -87,12 +98,15 @@ def run_station():
         vision_model_override=raw.get("vision_model"),
         language_model_override=raw.get("language_model"),
         confidence_threshold=raw.get("confidence_threshold", 0.5),
+        fail_threshold=raw.get("fail_threshold", raw.get("confidence_threshold", 0.5)),
+        review_threshold=raw.get("review_threshold", raw.get("confidence_threshold", 0.5) * 0.6),
         anomaly_check_interval_sec=raw.get("rca", {}).get("anomaly_check_interval_sec", 300),
         z_score_threshold=raw.get("rca", {}).get("z_score_threshold", 2.5),
         defect_classes=raw.get("defect_classes", []),
         defect_taxonomy=raw.get("defect_taxonomy", {}),
         sop_map=raw.get("sop_map", {}),
         sop_context=raw.get("sop_context", {}),
+        provider_config=raw,
     )
 
     # Start runtime

@@ -100,6 +100,7 @@ class DetectionResult:
     model_version: str = ""  # Version from model bundle metadata
     model_name: str = ""  # Model name from bundle
     frame_ref: str = ""  # path to evidence frame
+    provider_metadata: dict[str, Any] = field(default_factory=dict)
 
 
 # ── Inspection Event (edge-to-cloud handoff) ──────────────────────────

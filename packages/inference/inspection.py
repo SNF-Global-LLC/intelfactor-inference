@@ -106,14 +106,19 @@ def run_inspection(
         return _error_result(inspection_id, station_id, f"Inference failed: {exc}")
 
     # ── 3. Verdict ──────────────────────────────────────────────────
-    fail_threshold = getattr(runtime.config, "confidence_threshold", 0.5)
-    review_threshold = fail_threshold * 0.6  # default: 0.3 for 0.5 fail
+    fail_threshold = getattr(
+        runtime.config,
+        "fail_threshold",
+        getattr(runtime.config, "confidence_threshold", 0.5),
+    )
+    review_threshold = getattr(runtime.config, "review_threshold", fail_threshold * 0.6)
 
     verdict, confidence, enriched = evaluate_verdict(
         raw_detections,
         fail_threshold=fail_threshold,
         review_threshold=review_threshold,
     )
+    verdict, confidence = _apply_provider_policy(detection_result, verdict, confidence, enriched)
 
     # ── 4. Annotate ─────────────────────────────────────────────────
     annotated_frame = annotate_frame(original_frame, enriched, verdict, confidence)
@@ -246,6 +251,7 @@ def run_inspection(
         },
         "model_version": detection_result.model_version,
         "model_name": detection_result.model_name,
+        "provider": _provider_summary(detection_result),
         "sync_status": "pending",
     }
 
@@ -306,6 +312,7 @@ def _save_report(
         "image_annotated_path": image_annotated_path,
         "model_version": detection_result.model_version,
         "model_name": detection_result.model_name,
+        "provider": _provider_summary(detection_result, include_raw_output=True),
         "timing": {
             "capture_ms": round(capture_ms, 1),
             "inference_ms": round(inference_ms, 1),
@@ -318,6 +325,57 @@ def _save_report(
         json.dump(report, f, indent=2, ensure_ascii=False)
 
     return str(report_file.relative_to(evidence_dir))
+
+
+def _apply_provider_policy(
+    detection_result: DetectionResult,
+    verdict: Verdict,
+    confidence: float,
+    detections: list[Detection],
+) -> tuple[Verdict, float]:
+    """Apply provider-specific safety policy after deterministic verdicting."""
+    metadata = detection_result.provider_metadata or {}
+    if not metadata.get("experimental"):
+        return verdict, confidence
+    if metadata.get("verdict_policy") != "review_only":
+        return verdict, confidence
+    if not detections or verdict != Verdict.FAIL:
+        return verdict, confidence
+
+    policy_adjustments = metadata.setdefault("policy_adjustments", [])
+    policy_adjustments.append(
+        {
+            "source": "inspection",
+            "policy": "review_only",
+            "from": Verdict.FAIL.value,
+            "to": Verdict.REVIEW.value,
+            "reason": "experimental_hosted_model",
+        }
+    )
+    logger.info(
+        "Inspection verdict clamped from FAIL to REVIEW for experimental hosted provider (model=%s)",
+        detection_result.model_version,
+    )
+    return Verdict.REVIEW, confidence
+
+
+def _provider_summary(
+    detection_result: DetectionResult,
+    include_raw_output: bool = False,
+) -> dict[str, Any]:
+    metadata = dict(detection_result.provider_metadata or {})
+    summary = {
+        "provider": metadata.get("provider", detection_result.model_name or "unknown"),
+        "label": metadata.get("label", detection_result.model_name or "Unknown"),
+        "detail": metadata.get("detail", detection_result.model_version),
+        "mode": metadata.get("mode", ""),
+        "experimental": bool(metadata.get("experimental", False)),
+        "verdict_policy": metadata.get("verdict_policy", "default"),
+        "policy_adjustments": metadata.get("policy_adjustments", []),
+    }
+    if include_raw_output and "raw_output" in metadata:
+        summary["raw_output"] = metadata["raw_output"]
+    return summary
 
 
 def _error_result(inspection_id: str, station_id: str, error: str) -> dict[str, Any]:

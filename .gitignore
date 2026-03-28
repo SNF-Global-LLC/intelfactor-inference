@@ -59,3 +59,16 @@ run_kyoto_batch.py
 # Logs
 *.log
 logs/
+
+# Temporary/Local files
+combined.tar.gz
+.azure_vm_ip
+.training_connection
+vm_create_output.json
+
+# Virtual environments
+.venv*
+venv/
+
+# Training artifacts
+training/datasets/raw/

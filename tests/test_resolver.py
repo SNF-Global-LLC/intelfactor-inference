@@ -11,6 +11,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from packages.inference.schemas import DeviceClass, InferenceBackend
+from packages.inference.providers.vision_roboflow import RoboflowHostedVisionProvider
 from packages.inference.providers.resolver import (
     CapabilityResolver,
     LANGUAGE_MODELS,
@@ -113,3 +114,28 @@ class TestCapabilityResolver:
             assert "name" in model, f"Missing 'name' in {key}"
             assert "backend" in model, f"Missing 'backend' in {key}"
             assert "min_vram_mb" in model, f"Missing 'min_vram_mb' in {key}"
+
+    def test_resolve_roboflow_provider_uses_workflow_when_configured(self):
+        """Roboflow provider should prefer workflow mode when workflow_id is configured."""
+        resolver = CapabilityResolver(config={
+            "model_dir": "/tmp/test_models",
+            "roboflow_api_key": "rf_test_key",
+            "roboflow_workspace": "intelfactor-aj2un",
+            "roboflow_workflow_id": "detect-and-classify-4",
+            "class_name_map": {"Scratches": "blade_scratch"},
+            "confidence_threshold": 0.4,
+        })
+
+        provider = resolver.resolve_vision_provider(
+            override_model="roboflow_hosted",
+            provider_config={"station_id": "station_1"},
+        )
+
+        assert isinstance(provider, RoboflowHostedVisionProvider)
+        assert provider.api_key == "rf_test_key"
+        assert provider.workspace == "intelfactor-aj2un"
+        assert provider.workflow_id == "detect-and-classify-4"
+        assert provider.use_workflow is True
+        assert provider.api_url == "https://serverless.roboflow.com"
+        assert provider.model_id == "detect-and-classify-4"
+        assert provider.class_name_map["Scratches"] == "blade_scratch"

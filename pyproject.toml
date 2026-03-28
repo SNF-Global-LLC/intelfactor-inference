@@ -26,6 +26,7 @@ jetson = [
     "llama-cpp-python>=0.2.50",
     "opencv-python-headless>=4.8",
     "flask>=3.0",
+    "inference-sdk; python_version < '3.13'",
 ]
 # GPU server / site hub (vLLM + Triton)
 server = [
@@ -34,6 +35,7 @@ server = [
     "flask>=3.0",
     "psycopg2-binary>=2.9",
     "minio>=7.2",
+    "inference-sdk; python_version < '3.13'",
 ]
 # Cloud sync (for hybrid mode)
 sync = [
@@ -46,6 +48,7 @@ dev = [
     "pytest>=8.0",
     "pytest-cov>=4.0",
     "ruff>=0.3",
+    "inference-sdk; python_version < '3.13'",
 ]
 
 [project.scripts]

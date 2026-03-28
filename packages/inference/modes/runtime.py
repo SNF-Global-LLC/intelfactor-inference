@@ -46,10 +46,13 @@ class StationConfig:
     vision_model_override: str | None = None
     language_model_override: str | None = None
     confidence_threshold: float = 0.5
+    fail_threshold: float = 0.5
+    review_threshold: float = 0.3
     # Defect class names (0-based, must match YOLO engine output order).
     # Loaded from station.yaml defect_classes.
     # Falls back to _CANONICAL_DEFECT_CLASSES in resolver.py if empty.
     defect_classes: list[str] = field(default_factory=list)
+    provider_config: dict[str, Any] = field(default_factory=dict)
 
     # RCA
     anomaly_check_interval_sec: int = 300  # 5 minutes
@@ -103,9 +106,12 @@ class StationRuntime:
 
         # Resolve hardware capabilities and select optimal providers
         resolver = CapabilityResolver(config={
+            **self.config.provider_config,
             "model_dir": self.config.model_dir,
             "station_id": self.config.station_id,
             "confidence_threshold": self.config.confidence_threshold,
+            "fail_threshold": self.config.fail_threshold,
+            "review_threshold": self.config.review_threshold,
         })
 
         caps = resolver.detect_capabilities()
@@ -325,6 +331,32 @@ class StationRuntime:
             "vision_is_stub": type(self.vision).__name__ == "StubVisionProvider" if self.vision else None,
             "language_is_stub": type(self.language).__name__ == "StubLanguageProvider" if self.language else None,
         }
+        if self.vision is not None:
+            model_name = getattr(self.vision.model_spec, "model_name", "")
+            if model_name:
+                stats["vision_model_name"] = model_name
+
+            if type(self.vision).__name__ == "RoboflowHostedVisionProvider":
+                workspace = getattr(self.vision, "workspace", "")
+                workflow_id = getattr(self.vision, "workflow_id", "")
+                project = getattr(self.vision, "project", "")
+                version = getattr(self.vision, "version", "")
+                experimental = bool(getattr(self.vision, "experimental_mode", False))
+                verdict_policy = str(getattr(self.vision, "verdict_policy", "default"))
+                if workflow_id:
+                    parts = [p for p in (workspace, workflow_id) if p]
+                else:
+                    parts = [p for p in (workspace, project) if p]
+                detail = "/".join(parts)
+                if version and not workflow_id:
+                    detail = f"{detail} v{version}" if detail else f"v{version}"
+                stats["vision_provider_label"] = "Roboflow Hosted (Experimental)" if experimental else "Roboflow Hosted"
+                if detail:
+                    stats["vision_provider_detail"] = detail
+                stats["vision_provider_experimental"] = experimental
+                stats["vision_provider_policy"] = verdict_policy
+            elif model_name:
+                stats["vision_provider_label"] = model_name
         if self.pipeline:
             stats["pipeline"] = self.pipeline.get_stats()
         if self.sensor_service is not None:
