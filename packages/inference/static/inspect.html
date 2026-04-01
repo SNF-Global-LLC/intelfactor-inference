@@ -3,189 +3,148 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>IntelFactor 质检站 — Manual Inspection</title>
-<style>
-  :root {
-    --pass: #2e7d32; --fail: #c62828; --review: #ef6c00;
-    --bg: #f5f5f5; --card: #ffffff; --text: #212121; --muted: #757575;
-    --border: #e0e0e0; --accent: #1565c0;
-  }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); font-size: 15px; }
-
-  .header { background: #1b2a4a; color: white; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; }
-  .header h1 { font-size: 18px; font-weight: 600; }
-  .header .nav { display: flex; gap: 12px; font-size: 13px; }
-  .header a { color: rgba(255,255,255,0.7); text-decoration: none; }
-  .header a:hover { color: white; }
-
-  .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
-
-  /* ── Controls ── */
-  .controls { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; flex-wrap: wrap; }
-  .controls input { padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; }
-  .controls input:focus { outline: none; border-color: var(--accent); }
-  .btn-inspect { background: var(--accent); color: white; border: none; padding: 12px 32px; border-radius: 6px; font-size: 16px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
-  .btn-inspect:hover { opacity: 0.9; }
-  .btn-inspect:disabled { opacity: 0.5; cursor: not-allowed; }
-
-  /* ── Main layout ── */
-  .main { display: grid; grid-template-columns: 1fr 380px; gap: 20px; }
-  @media (max-width: 900px) { .main { grid-template-columns: 1fr; } }
-
-  /* ── Image panel ── */
-  .image-panel { background: var(--card); border-radius: 8px; border: 1px solid var(--border); overflow: hidden; }
-  .image-panel .placeholder { display: flex; align-items: center; justify-content: center; min-height: 400px; color: var(--muted); font-size: 16px; text-align: center; padding: 20px; }
-  .image-panel img { width: 100%; height: auto; display: block; }
-  .img-tabs { display: flex; border-bottom: 1px solid var(--border); }
-  .img-tab { padding: 7px 16px; font-size: 13px; cursor: pointer; border: none; background: none; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
-  .img-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
-
-  /* ── Verdict banner ── */
-  .verdict-banner { padding: 16px 20px; text-align: center; font-size: 28px; font-weight: 700; color: white; display: none; }
-  .verdict-PASS { background: var(--pass); display: block; }
-  .verdict-FAIL { background: var(--fail); display: block; }
-  .verdict-REVIEW { background: var(--review); display: block; }
-  .verdict-ERROR { background: #616161; display: block; }
-
-  /* ── Side panel ── */
-  .side-panel { display: flex; flex-direction: column; gap: 16px; }
-  .card { background: var(--card); border-radius: 8px; border: 1px solid var(--border); }
-  .card-title { padding: 10px 16px; font-weight: 600; font-size: 14px; border-bottom: 1px solid var(--border); }
-  .card-body { padding: 12px 16px; font-size: 14px; }
-
-  /* ── Detections table ── */
-  .det-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .det-table th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); color: var(--muted); font-weight: 500; }
-  .det-table td { padding: 6px 8px; border-bottom: 1px solid #f0f0f0; }
-  .sev-high { color: var(--fail); font-weight: 600; }
-  .sev-med { color: var(--review); font-weight: 600; }
-  .sev-low { color: var(--pass); }
-
-  /* ── Timing ── */
-  .timing { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .timing .stat { text-align: center; }
-  .timing .stat-val { font-size: 20px; font-weight: 700; color: var(--accent); }
-  .timing .stat-label { font-size: 11px; color: var(--muted); }
-
-  /* ── Feedback ── */
-  .feedback { display: flex; gap: 8px; }
-  .btn-accept { background: var(--pass); color: white; border: none; padding: 8px 20px; border-radius: 6px; font-size: 14px; cursor: pointer; }
-  .btn-reject { background: var(--fail); color: white; border: none; padding: 8px 20px; border-radius: 6px; font-size: 14px; cursor: pointer; }
-  .btn-accept:hover, .btn-reject:hover { opacity: 0.9; }
-  .btn-accept:disabled, .btn-reject:disabled { opacity: 0.5; cursor: not-allowed; }
-  .feedback-status { font-size: 13px; color: var(--muted); margin-top: 8px; }
-
-  /* ── History ── */
-  .history-list { max-height: 200px; overflow-y: auto; }
-  .history-item { padding: 6px 8px; border-bottom: 1px solid #f0f0f0; font-size: 12px; display: flex; justify-content: space-between; cursor: pointer; }
-  .history-item:hover { background: #f5f5f5; }
-  .history-item .verdict-tag { padding: 1px 6px; border-radius: 3px; color: white; font-size: 11px; font-weight: 600; }
-  .tag-PASS { background: var(--pass); }
-  .tag-FAIL { background: var(--fail); }
-  .tag-REVIEW { background: var(--review); }
-
-  .spinner { display: none; }
-  .spinner.active { display: inline-block; width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.6s linear infinite; margin-left: 8px; vertical-align: middle; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  /* ── Status bar ── */
-  .status-bar { background: #0d1b33; border-bottom: 1px solid #2a3a5c; padding: 6px 20px; display: flex; gap: 16px; flex-wrap: wrap; }
-  .status-badge { font-size: 12px; color: rgba(255,255,255,0.6); }
-  .status-badge b { color: rgba(255,255,255,0.9); }
-  .status-badge.ready b { color: #66bb6a; }
-  .status-badge.warn b { color: #ffa726; }
-
-  /* ── Verdict ── */
-  .verdict-label { font-size: 28px; font-weight: 700; line-height: 1.2; }
-  .verdict-conf { font-size: 13px; font-weight: 400; margin-top: 3px; opacity: 0.85; }
-  .verdict-meta { font-size: 11px; margin-top: 2px; opacity: 0.7; letter-spacing: 0.02em; }
-</style>
+<title>IntelFactor Station — Manual Inspection</title>
+<link rel="stylesheet" href="/static/station.css">
 </head>
 <body>
-<div class="header">
-  <h1>IntelFactor 质检站 — Manual QC</h1>
-  <div class="nav">
-    <a href="/status">Station Status</a>
-    <a href="/inspect" style="color:white;font-weight:600">Inspect</a>
-  </div>
-</div>
+
+<!-- System Status Bar -->
 <div class="status-bar">
-  <span class="status-badge" id="badgeStation"><b>Station: </b><span id="badgeStationVal">—</span></span>
-  <span class="status-badge" id="badgeCamera"><b>Camera: </b><span id="badgeCameraVal">—</span></span>
-  <span class="status-badge" id="badgeModel"><b>Model: </b><span id="badgeModelVal">—</span></span>
-  <span class="status-badge ready" id="badgeReady"><b id="badgeReadyVal">Connecting…</b></span>
+  <div class="status-bar-left">
+    <div style="display:flex;align-items:center;gap:4px">
+      <span class="status-dot status-dot-green"></span>
+      <span>SYSTEM_ONLINE</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:4px">
+      <span class="status-dot-lime">●</span>
+      <span>EDGE_CONNECTED</span>
+    </div>
+  </div>
+  <div class="status-bar-center">/// INTELFACTOR.AI ///</div>
+  <div class="status-bar-right">
+    <span style="color:#3B82F6">AI_READY</span>
+    <span>EN_US</span>
+  </div>
 </div>
 
+<!-- Main Navigation -->
+<div class="main-nav">
+  <div class="nav-brand">
+    <div class="nav-logo">INTELFACTOR<span class="nav-logo-ai">.AI</span></div>
+    <span class="nav-station" id="navStation">Station SNF-Vision-1</span>
+  </div>
+  <div class="nav-actions">
+    <span style="color:#71717A" id="navModel">yolov8n-fp16</span>
+    <div class="nav-ready" id="navReady">
+      <span class="nav-ready-dot"></span>
+      <span>Ready</span>
+    </div>
+    <button class="lang-toggle" onclick="toggleLang()"><span id="langLabel">中文 ▾</span></button>
+  </div>
+</div>
+
+<!-- Background Glow Orbs -->
+<div class="glow-orb-blue"></div>
+<div class="glow-orb-orange"></div>
+
+<!-- Main Container -->
 <div class="container">
-  <!-- Controls -->
-  <div class="controls">
-    <input type="text" id="productId" placeholder="Product ID (optional)" style="width:180px">
-    <input type="text" id="operatorId" placeholder="Operator ID (optional)" style="width:160px">
-    <button class="btn-inspect" id="btnInspect" onclick="runInspection()">
-      Inspect <span class="spinner" id="spinner"></span>
-    </button>
+  <!-- Section Label -->
+  <div class="section-label">
+    <div class="section-dot"></div>
+    <span>MANUAL INSPECTION</span>
   </div>
 
-  <div class="main">
-    <!-- Image Panel -->
-    <div class="image-panel">
-      <div id="verdictBanner" class="verdict-banner"></div>
-      <div id="imgTabs" class="img-tabs" style="display:none">
-        <button class="img-tab active" id="tabAnnotated" onclick="showTab('annotated')">Annotated</button>
-        <button class="img-tab" id="tabOriginal" onclick="showTab('original')">Original</button>
+  <!-- Main Grid -->
+  <div class="main-grid" style="display:grid;grid-template-columns:1fr 400px;gap:24px">
+
+    <!-- Left: Image Card -->
+    <div class="card">
+      <!-- Controls -->
+      <div style="padding:20px;border-bottom:1px solid var(--border);display:flex;gap:12px;align-items:center">
+        <input type="text" id="productId" placeholder="产品 ID（可选）" style="flex:1">
+        <input type="text" id="operatorId" placeholder="操作员 ID（可选）" style="flex:1">
+        <button class="btn btn-primary" id="btnInspect" onclick="runInspection()">
+          检测 Inspect <span class="spinner hidden" id="spinner"></span>
+        </button>
       </div>
-      <div id="imagePlaceholder" class="placeholder">Place product under camera, then click "Inspect"</div>
-      <img id="inspectImage" style="display:none" alt="Inspection result">
+
+      <!-- Verdict Banner -->
+      <div id="verdictBanner" class="verdict-banner hidden"></div>
+
+      <!-- Image Tabs -->
+      <div id="imgTabs" class="img-tabs hidden">
+        <button class="img-tab active" id="tabAnnotated" onclick="showTab('annotated')">带标注 Annotated</button>
+        <button class="img-tab" id="tabOriginal" onclick="showTab('original')">原图 Original</button>
+      </div>
+
+      <!-- Image Area -->
+      <div id="imgArea" class="img-area">
+        <div id="imgPlaceholder" class="img-placeholder">
+          <div class="img-placeholder-icon">📷</div>
+          <div class="img-placeholder-text">将产品放置在相机下方</div>
+          <div class="img-placeholder-subtext">Place product under camera</div>
+        </div>
+        <img id="inspectImage" style="display:none;width:100%;height:auto" alt="Inspection result">
+      </div>
     </div>
 
-    <!-- Side Panel -->
-    <div class="side-panel">
-      <!-- Timing -->
-      <div class="card" id="timingCard" style="display:none">
-        <div class="card-title">Timing</div>
+    <!-- Right: Details Cards -->
+    <div style="display:flex;flex-direction:column;gap:16px">
+
+      <!-- Performance Card -->
+      <div class="card" id="perfCard" style="display:none">
+        <div class="card-header">性能 Performance</div>
         <div class="card-body">
-          <div class="timing">
-            <div class="stat"><div class="stat-val" id="captureMs">-</div><div class="stat-label">Capture (ms)</div></div>
-            <div class="stat"><div class="stat-val" id="inferenceMs">-</div><div class="stat-label">Inference (ms)</div></div>
-            <div class="stat"><div class="stat-val" id="totalMs">-</div><div class="stat-label">Total (ms)</div></div>
-            <div class="stat"><div class="stat-val" id="numDets">-</div><div class="stat-label">Detections</div></div>
+          <div class="stats-grid">
+            <div class="stat">
+              <div class="stat-value" id="captureMs">-</div>
+              <div class="stat-label">CAPTURE (ms)</div>
+            </div>
+            <div class="stat">
+              <div class="stat-value" id="inferenceMs">-</div>
+              <div class="stat-label">INFERENCE (ms)</div>
+            </div>
+            <div class="stat">
+              <div class="stat-value" id="totalMs">-</div>
+              <div class="stat-label">TOTAL (ms)</div>
+            </div>
+            <div class="stat">
+              <div class="stat-value" id="numDets" style="color:var(--text-secondary)">-</div>
+              <div class="stat-label">DETECTIONS</div>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- Detections -->
-      <div class="card" id="detectionsCard" style="display:none">
-        <div class="card-title">Detections</div>
+      <!-- Detections Card -->
+      <div class="card" id="detsCard" style="display:none">
+        <div class="card-header">检测结果 Detections</div>
         <div class="card-body">
-          <table class="det-table">
-            <thead><tr><th>Defect</th><th>Conf</th><th>Severity</th></tr></thead>
-            <tbody id="detBody"></tbody>
-          </table>
+          <div id="detsList" style="font-size:13px;line-height:1.8"></div>
         </div>
       </div>
 
-      <!-- Feedback -->
+      <!-- Operator Feedback Card -->
       <div class="card" id="feedbackCard" style="display:none">
-        <div class="card-title">Operator Feedback</div>
+        <div class="card-header">操作员反馈 Operator Feedback</div>
         <div class="card-body">
-          <div class="feedback">
-            <button class="btn-accept" id="btnAccept" onclick="sendFeedback('accepted')">Accept</button>
-            <button class="btn-reject" id="btnReject" onclick="sendFeedback('rejected')">Reject</button>
+          <div style="display:flex;gap:10px">
+            <button class="btn btn-pass" style="flex:1" id="btnAccept" onclick="sendFeedback('accepted')">✓ 接受</button>
+            <button class="btn btn-fail" style="flex:1" id="btnReject" onclick="sendFeedback('rejected')">✗ 拒绝</button>
           </div>
-          <div class="feedback-status" id="feedbackStatus"></div>
+          <div id="feedbackStatus" style="margin-top:12px;font-size:13px;color:var(--text-muted)"></div>
         </div>
       </div>
 
-      <!-- History -->
+      <!-- Recent Inspections Card -->
       <div class="card">
-        <div class="card-title">Recent Inspections</div>
-        <div class="card-body">
-          <div class="history-list" id="historyList">
-            <div style="color:var(--muted); font-size:13px;">No inspections yet</div>
-          </div>
+        <div class="card-header">最近检测 Recent</div>
+        <div class="recent-list" id="recentList">
+          <div style="color:var(--text-muted);font-size:13px;text-align:center;padding:20px">No inspections yet</div>
         </div>
       </div>
+
     </div>
   </div>
 </div>
@@ -194,28 +153,32 @@
 let currentResult = null;
 let currentTab = 'annotated';
 const sessionHistory = [];
+let lang = 'zh';
 
-// ── Image tab toggle ────────────────────────────────────────────────
+// ── Language Toggle ──
+function toggleLang() {
+  lang = lang === 'zh' ? 'en' : 'zh';
+  document.getElementById('langLabel').textContent = lang === 'zh' ? '中文 ▾' : 'EN ▾';
+  // Could add data-lang attributes to elements for full translation
+}
+
+// ── Tab Toggle ──
 function showTab(tab) {
   currentTab = tab;
   document.getElementById('tabAnnotated').classList.toggle('active', tab === 'annotated');
   document.getElementById('tabOriginal').classList.toggle('active', tab === 'original');
   if (!currentResult) return;
   const img = document.getElementById('inspectImage');
-  const url = tab === 'annotated'
-    ? currentResult.image_annotated_url
-    : currentResult.image_original_url;
-  if (url) {
-    img.src = url + '?t=' + Date.now();
-  }
+  const url = tab === 'annotated' ? currentResult.image_annotated_url : currentResult.image_original_url;
+  if (url) img.src = url + '?t=' + Date.now();
 }
 
-// ── Main inspection call ────────────────────────────────────────────
+// ── Main Inspection ──
 async function runInspection() {
   const btn = document.getElementById('btnInspect');
   const spinner = document.getElementById('spinner');
   btn.disabled = true;
-  spinner.classList.add('active');
+  spinner.classList.remove('hidden');
 
   document.getElementById('feedbackStatus').textContent = '';
   document.getElementById('btnAccept').disabled = false;
@@ -246,100 +209,99 @@ async function runInspection() {
     alert('Inspection failed: ' + err.message);
   } finally {
     btn.disabled = false;
-    spinner.classList.remove('active');
+    spinner.classList.add('hidden');
   }
 }
 
-// ── Render result into UI ───────────────────────────────────────────
+// ── Render Result ──
 function renderResult(r) {
+  const verdict = r.verdict || r.decision || 'UNKNOWN';
+
   // Verdict banner
   const banner = document.getElementById('verdictBanner');
-  const verdict = r.verdict || r.decision || 'UNKNOWN';
-  const provider = r.provider || {};
-  banner.className = 'verdict-banner verdict-' + verdict;
+  banner.className = 'verdict-banner verdict-banner-' + verdict.toLowerCase();
+  banner.classList.remove('hidden');
+
   const confPct = ((r.confidence || 0) * 100).toFixed(0) + '%';
   const iid = r.inspection_id || '';
   const ts = r.timestamp ? new Date(r.timestamp).toLocaleTimeString() : '';
+
+  // Provider notes (for experimental models)
+  const provider = r.provider || {};
   const providerNote = provider.experimental
-    ? '<div class="verdict-meta">Experimental hosted model · policy: '
-      + (provider.verdict_policy || 'default') + '</div>'
+    ? `<div class="verdict-meta">Experimental hosted model · policy: ${provider.verdict_policy || 'default'}</div>`
     : '';
-  banner.innerHTML = '<div class="verdict-label">' + verdict + '</div>'
-    + '<div class="verdict-conf">Confidence: ' + confPct + '</div>'
-    + (iid ? '<div class="verdict-meta">' + iid + (ts ? '  ·  ' + ts : '') + '</div>' : '')
-    + providerNote;
+
+  banner.innerHTML = `
+    <div class="verdict-label verdict-label-${verdict.toLowerCase()}">${verdict}</div>
+    <div class="verdict-conf">置信度 Confidence: <span class="verdict-conf-value">${confPct}</span></div>
+    ${iid ? `<div class="verdict-meta">${iid}${ts ? '  ·  ' + ts : ''}</div>` : ''}
+    ${providerNote}
+  `;
 
   // Image
   const img = document.getElementById('inspectImage');
-  const placeholder = document.getElementById('imagePlaceholder');
+  const placeholder = document.getElementById('imgPlaceholder');
   const tabs = document.getElementById('imgTabs');
   const annotatedUrl = r.image_annotated_url;
   const originalUrl = r.image_original_url;
 
   if (annotatedUrl || originalUrl) {
     const srcUrl = (currentTab === 'annotated' ? annotatedUrl : originalUrl) || annotatedUrl || originalUrl;
-    img.onload = null;
     img.onerror = function() {
-      // If annotated 404s, fall back to original
       if (currentTab === 'annotated' && originalUrl) {
         img.src = originalUrl + '?t=' + Date.now();
         img.onerror = function() {
           img.style.display = 'none';
           placeholder.style.display = 'flex';
-          placeholder.textContent = 'Image saved to disk but not available via HTTP (evidence write may need OpenCV).';
+          placeholder.textContent = 'Image not available';
         };
       } else {
         img.style.display = 'none';
         placeholder.style.display = 'flex';
-        placeholder.textContent = 'Image not available';
       }
     };
     img.src = srcUrl + '?t=' + Date.now();
     img.style.display = 'block';
     placeholder.style.display = 'none';
-    tabs.style.display = (annotatedUrl && originalUrl) ? 'flex' : 'none';
-    // Reset tab buttons
+    tabs.classList.toggle('hidden', !(annotatedUrl && originalUrl));
     document.getElementById('tabAnnotated').classList.toggle('active', currentTab === 'annotated');
     document.getElementById('tabOriginal').classList.toggle('active', currentTab === 'original');
   } else {
     img.style.display = 'none';
     placeholder.style.display = 'flex';
-    placeholder.textContent = r.error || 'No image — capture backend returned no evidence path.';
-    tabs.style.display = 'none';
+    tabs.classList.add('hidden');
   }
 
   // Timing
   const t = r.timing || {};
-  document.getElementById('timingCard').style.display = '';
+  document.getElementById('perfCard').style.display = '';
   document.getElementById('captureMs').textContent = (t.capture_ms || 0).toFixed(0);
   document.getElementById('inferenceMs').textContent = (t.inference_ms || 0).toFixed(0);
   document.getElementById('totalMs').textContent = (t.total_ms || 0).toFixed(0);
   document.getElementById('numDets').textContent = r.num_detections || 0;
 
-  // Detections table
-  const tbody = document.getElementById('detBody');
-  tbody.innerHTML = '';
+  // Detections
+  const detsList = document.getElementById('detsList');
   if (r.detections && r.detections.length > 0) {
-    document.getElementById('detectionsCard').style.display = '';
-    r.detections.forEach(d => {
-      const tr = document.createElement('tr');
-      const sevClass = d.severity >= 0.7 ? 'sev-high' : d.severity >= 0.4 ? 'sev-med' : 'sev-low';
-      tr.innerHTML = '<td>' + (d.defect_type || '?') + '</td>'
-        + '<td>' + ((d.confidence || 0) * 100).toFixed(0) + '%</td>'
-        + '<td class="' + sevClass + '">' + ((d.severity || 0) * 100).toFixed(0) + '%</td>';
-      tbody.appendChild(tr);
-    });
+    document.getElementById('detsCard').style.display = '';
+    detsList.innerHTML = r.detections.map(d => {
+      const sevClass = d.severity >= 0.7 ? 'color:var(--fail)' : d.severity >= 0.4 ? 'color:var(--review)' : 'color:var(--pass)';
+      return `<div style="display:flex;justify-content:space-between;padding:4px 0">
+        <span>${d.defect_type || '?'}</span>
+        <span style="${sevClass};font-weight:600">${((d.confidence || 0)*100).toFixed(0)}% · Sev ${((d.severity || 0)*100).toFixed(0)}%</span>
+      </div>`;
+    }).join('');
   } else {
-    document.getElementById('detectionsCard').style.display = '';
-    tbody.innerHTML = '<tr><td colspan="3" style="color:var(--muted);text-align:center">No defects detected</td></tr>';
+    document.getElementById('detsCard').style.display = 'none';
   }
 
-  // Feedback (only for FAIL/REVIEW)
+  // Feedback card (only for FAIL/REVIEW)
   document.getElementById('feedbackCard').style.display =
     (verdict === 'FAIL' || verdict === 'REVIEW') ? '' : 'none';
 }
 
-// ── Operator feedback ───────────────────────────────────────────────
+// ── Operator Feedback ──
 async function sendFeedback(action) {
   if (!currentResult) return;
   const oid = document.getElementById('operatorId').value.trim();
@@ -363,7 +325,7 @@ async function sendFeedback(action) {
   }
 }
 
-// ── History ─────────────────────────────────────────────────────────
+// ── History ──
 function addToHistory(r) {
   sessionHistory.unshift(r);
   if (sessionHistory.length > 50) sessionHistory.pop();
@@ -371,23 +333,19 @@ function addToHistory(r) {
 }
 
 function renderHistory(items) {
-  const list = document.getElementById('historyList');
+  const list = document.getElementById('recentList');
   if (!items || items.length === 0) {
-    list.innerHTML = '<div style="color:var(--muted);font-size:13px;">No inspections yet</div>';
+    list.innerHTML = '<div style="color:var(--text-muted);font-size:13px;text-align:center;padding:20px">No inspections yet</div>';
     return;
   }
-  list.innerHTML = '';
-  items.forEach(h => {
-    const div = document.createElement('div');
-    div.className = 'history-item';
+  list.innerHTML = items.map(h => {
     const verdict = h.verdict || h.decision || '?';
     const ts = h.timestamp ? new Date(h.timestamp).toLocaleTimeString() : '';
-    const pid = h.product_id || '';
-    div.innerHTML = '<span>' + ts + (pid ? ' — ' + pid : '') + '</span>'
-      + '<span class="verdict-tag tag-' + verdict + '">' + verdict + '</span>';
-    div.onclick = () => { currentResult = h; currentTab = 'annotated'; renderResult(h); };
-    list.appendChild(div);
-  });
+    return `<div class="recent-item" onclick='currentResult = ${JSON.stringify(h).replace(/'/g, "&apos;")}; currentTab = "annotated"; renderResult(${JSON.stringify(h).replace(/'/g, "&apos;")})'>
+      <span class="recent-time">${ts}</span>
+      <span class="badge badge-${verdict.toLowerCase()}">${verdict}</span>
+    </div>`;
+  }).join('');
 }
 
 async function loadHistory() {
@@ -395,7 +353,6 @@ async function loadHistory() {
     const resp = await fetch('/api/inspections?limit=20');
     if (!resp.ok) return;
     const data = await resp.json();
-    // Map DB records to the shape renderResult expects
     const items = (data.inspections || []).map(e => ({
       ...e,
       verdict: e.decision || e.verdict,
@@ -406,56 +363,43 @@ async function loadHistory() {
   } catch (_) {}
 }
 
-// ── Status badges ───────────────────────────────────────────────────
+// ── Status Badge Update ──
 async function loadStatus() {
   try {
     const resp = await fetch('/api/status');
     if (!resp.ok) {
-      document.getElementById('badgeReadyVal').textContent = 'API unavailable';
-      document.getElementById('badgeReady').className = 'status-badge warn';
+      document.getElementById('navReady').innerHTML = '<span style="color:var(--fail)">● Offline</span>';
       return;
     }
     const d = await resp.json();
 
-    document.getElementById('badgeStationVal').textContent = d.station_id || '—';
+    document.getElementById('navStation').textContent = 'Station ' + (d.station_id || 'SNF-Vision-1');
 
-    // Camera badge
+    const visionKey = d.vision_model_key || d.vision_backend || 'unknown';
+    const isStub = d.vision_is_stub;
+    document.getElementById('navModel').textContent = isStub ? 'stub (dev)' : visionKey;
+
     const camBackend = d.camera_backend || 'unknown';
     const camConnected = d.camera_connected;
-    const camLabel = camBackend === 'disabled' ? 'disabled'
-      : camConnected ? camBackend : camBackend + ' (not connected)';
-    document.getElementById('badgeCameraVal').textContent = camLabel;
-    document.getElementById('badgeCamera').className =
-      'status-badge' + (camConnected || camBackend === 'disabled' ? '' : ' warn');
+    const ready = camConnected || camBackend === 'disabled';
 
-    // Model badge
-    const visionKey = d.vision_model_key || d.vision_backend || '—';
-    const isStub = d.vision_is_stub;
-    const modelLabel = d.vision_provider_label || visionKey;
-    const modelDetail = d.vision_provider_detail ? ' · ' + d.vision_provider_detail : '';
-    const isExperimental = !!d.vision_provider_experimental;
-    const policySuffix = d.vision_provider_policy && isExperimental
-      ? ' · policy=' + d.vision_provider_policy
-      : '';
-    document.getElementById('badgeModelVal').textContent =
-      isStub ? 'stub (dev)' : (modelLabel + modelDetail + policySuffix);
-    document.getElementById('badgeModel').className =
-      'status-badge' + (isStub || isExperimental ? ' warn' : '');
-
-    // Ready badge
-    const captureReady = camConnected || camBackend === 'disabled';
-    document.getElementById('badgeReadyVal').textContent = captureReady ? 'Ready' : 'Camera not connected';
-    document.getElementById('badgeReady').className =
-      'status-badge' + (captureReady ? ' ready' : ' warn');
+    const readyEl = document.getElementById('navReady');
+    if (ready) {
+      readyEl.innerHTML = '<span class="nav-ready-dot"></span><span>Ready</span>';
+      readyEl.style.color = 'var(--green)';
+    } else {
+      readyEl.innerHTML = '<span>● Camera not connected</span>';
+      readyEl.style.color = 'var(--fail)';
+    }
   } catch (_) {
-    document.getElementById('badgeReadyVal').textContent = 'Offline';
-    document.getElementById('badgeReady').className = 'status-badge warn';
+    document.getElementById('navReady').innerHTML = '<span style="color:var(--fail)">● Offline</span>';
   }
 }
 
-// ── Init ────────────────────────────────────────────────────────────
+// ── Init ──
 loadHistory();
 loadStatus();
 </script>
+
 </body>
 </html>
