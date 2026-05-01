@@ -90,10 +90,12 @@ if [ -f "$REPO_DIR/configs/wiko_taxonomy.yaml" ]; then
     echo "  ✓ wiko_taxonomy.yaml"
 fi
 
-# ── 4. Install Python package ──
+# ── 4. Install Python package (into venv) ──
 echo ""
 echo "[4/6] Installing Python package..."
 cd "$REPO_DIR"
+
+VENV_DIR="$INSTALL_DIR/venv"
 
 # Detect if on Jetson
 if [ -f /etc/nv_tegra_release ] || dpkg -l nvidia-jetpack &>/dev/null 2>&1; then
@@ -104,8 +106,18 @@ else
     echo "  Detected: Server (using [server] extras)"
 fi
 
-pip3 install -e ".[$EXTRAS]" --break-system-packages 2>&1 | tail -5
-echo "  ✓ Package installed"
+# Create venv if it doesn't exist (--system-site-packages to inherit TensorRT/CUDA)
+if [ ! -d "$VENV_DIR" ]; then
+    echo "  Creating venv at $VENV_DIR..."
+    python3 -m venv --system-site-packages "$VENV_DIR"
+    echo "  ✓ Virtual environment created"
+else
+    echo "  ✓ Virtual environment already exists"
+fi
+
+# Install into venv
+"$VENV_DIR/bin/pip" install -e ".[$EXTRAS]" 2>&1 | tail -5
+echo "  ✓ Package installed into $VENV_DIR"
 
 # ── 5. Install systemd service ──
 echo ""
