@@ -1,3 +1,14 @@
+> **STALE DOCUMENT** — This file describes the original `intelbase` architecture
+> (FastAPI, DynamoDB, Vite dashboard). It does **not** apply to the current
+> `intelfactor-inference` repo. For Jetson deployment, see:
+> - **[docs/JETSON_QUICKSTART.md](docs/JETSON_QUICKSTART.md)** — Docker + bare metal setup
+> - **[deploy/edge-only/](deploy/edge-only/)** — Docker Compose for edge stations
+> - **[CLAUDE.md](CLAUDE.md)** — Full architecture reference
+>
+> Kept for historical context only. Do not follow these instructions.
+
+---
+
 You don’t need “another repo.” You need one repo that can run in two modes without lying to itself:
 	•	EDGE-ONLY (local): everything runs on the factory box (API + DB + evidence files + dashboard).
 	•	HYBRID: edge box runs capture/infer/decide/evidence locally, then syncs summaries + evidence pointers to your cloud API for HQ dashboards.

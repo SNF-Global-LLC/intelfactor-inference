@@ -286,6 +286,7 @@ ok "SHA256:       $ENGINE_SHA256"
 MANIFEST_PATH="${OUTPUT_DIR}/${MODEL_BASENAME}_${PRECISION}_manifest.json"
 BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
+TRTEXEC_ARGS_STR="${TRTEXEC_ARGS[*]}"
 "$PYTHON" - <<PYEOF
 import json, os
 
@@ -303,7 +304,7 @@ manifest = {
     "onnx_sha256": "${ONNX_SHA256}",
     "input_shape": [1, 3, 640, 640],
     "workspace_mb": ${WORKSPACE_MB},
-    "trtexec_args": ${TRTEXEC_ARGS[*]@Q},
+    "trtexec_args": "$TRTEXEC_ARGS_STR",
 }
 
 with open("${MANIFEST_PATH}", "w") as f:
