@@ -109,6 +109,58 @@ CAMERA_URI=rtsp://192.168.1.100:554/stream
 
 ---
 
+## Capture Frames for Model Training
+
+The station's normal evidence writer only saves **FAIL/REVIEW evidence after inference**. For model training, use the raw frame capture utility before relying on the model:
+
+```bash
+# USB camera: save 300 frames, one every 0.5s
+python3 scripts/capture_training_frames.py \
+  --protocol usb \
+  --source /dev/video0 \
+  --output-dir /opt/intelfactor/data/training_frames \
+  --station-id wiko-final-inspection-01 \
+  --label unlabeled \
+  --interval-sec 0.5 \
+  --max-frames 300
+
+# RTSP camera
+python3 scripts/capture_training_frames.py \
+  --protocol rtsp \
+  --source rtsp://192.168.1.100:554/stream \
+  --label unlabeled \
+  --max-frames 300
+
+# FLIR Blackfly S via PySpin
+python3 scripts/capture_training_frames.py \
+  --protocol pyspin \
+  --source 25423789 \
+  --label unlabeled \
+  --max-frames 300
+```
+
+Output layout:
+
+```text
+/opt/intelfactor/data/training_frames/
+  unlabeled/
+    20260502T201500Z/
+      wiko-final-inspection-01_20260502T201500Z_000001.jpg
+      wiko-final-inspection-01_20260502T201500Z_000002.jpg
+      manifest.jsonl
+```
+
+Use labels such as `pass`, `scratch_surface`, `burr`, or `unlabeled` depending on your collection pass. Annotation tools can ingest the JPEGs; `manifest.jsonl` records source, station, timestamp, frame size, and label.
+
+Recommended factory flow:
+
+1. Start with `--label unlabeled` and collect broad production variation.
+2. Add labeled passes for known defects only when an operator/QC lead confirms class names.
+3. Keep training frames separate from `/data/evidence`; evidence is for inspection audit trails, training frames are for dataset building.
+4. Do not sync training frames off-site unless the factory approves the data policy.
+
+---
+
 ## TensorRT Engine Build
 
 **TRT engines are device-specific.** Always build on the target Jetson.
