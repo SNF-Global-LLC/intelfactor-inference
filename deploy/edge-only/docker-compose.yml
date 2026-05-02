@@ -1,55 +1,67 @@
 # IntelFactor.ai — Edge-Only Deployment
-# Runs everything on a single NVIDIA box (Jetson or GPU server).
-# No cloud dependencies. Dashboard served locally.
+# Runs everything on a single NVIDIA Jetson or GPU server.
+# No cloud dependencies. Dashboard + API served locally.
 #
-# Usage:
-#   cd deploy/edge-only
+# Quick start:
+#   cp .env.example .env && nano .env
 #   docker compose up -d
+#   curl http://localhost:8080/health
 #
 # Dashboard: http://<edge-ip>:8080
-# API: http://<edge-ip>:8080/api/
+# API docs:  see CLAUDE.md or docs/JETSON_QUICKSTART.md
 
 services:
 
-  # ── Station Runtime (Inference + Evidence) ───────────────────────
+  # ── Station Runtime (Inference + RCA + Evidence + API) ───────────
   station:
     build:
       context: ../..
       dockerfile: deploy/edge-only/Dockerfile
     container_name: intelfactor-station
     restart: unless-stopped
-    runtime: nvidia  # Enable GPU access
-    environment:
-      # Storage mode
-      STORAGE_MODE: local
-      SQLITE_DB_PATH: /data/local.db
-      EVIDENCE_DIR: /data/evidence
+    runtime: nvidia
 
-      # Station config
+    environment:
+      # Storage
+      STORAGE_MODE: local
+      SQLITE_DB_PATH: ${DB_PATH:-/data/local.db}
+      DB_PATH: ${DB_PATH:-/data/local.db}
+      EVIDENCE_DIR: ${EVIDENCE_DIR:-/data/evidence}
+
+      # Station identity
       STATION_ID: ${STATION_ID:-station_01}
-      CAMERA_URI: ${CAMERA_URI:-/dev/video0}
+
+      # Camera
+      CAMERA_PROTOCOL: ${CAMERA_PROTOCOL:-file}
+      CAMERA_URI: ${CAMERA_URI:-/data/sample_images}
 
       # API server
       API_HOST: 0.0.0.0
-      API_PORT: 8080
+      API_PORT: ${API_PORT:-8080}
 
-      # Model paths (mounted from host)
+      # Model paths (inside container — maps to host MODELS_DIR)
       VISION_MODEL_PATH: /models/vision
-      LLM_MODEL_PATH: /models/llm
+      VISION_ENGINE_PATH: ${VISION_ENGINE_PATH:-/models/vision/yolov8n_fp16.engine}
+      LLM_MODEL_PATH: ${LLM_MODEL_PATH:-/models/llm/qwen2.5-3b-instruct-q4_k_m.gguf}
+      ENABLE_LOCAL_LLM: ${ENABLE_LOCAL_LLM:-false}
 
       # Evidence retention
       EVIDENCE_MAX_GB: ${EVIDENCE_MAX_GB:-50}
 
+      # Cloud sync (optional — leave empty for edge-only)
+      CLOUD_API_URL: ${CLOUD_API_URL:-}
+      CLOUD_API_KEY: ${CLOUD_API_KEY:-}
+
     volumes:
-      # Persistent data
+      # Persistent data (DB + evidence)
       - station_data:/data
-      # Model files (mounted read-only from host)
+      # Model files from host (read-only)
       - ${MODELS_DIR:-/opt/intelfactor/models}:/models:ro
-      # Camera device access
+      # Camera device access (needed for USB/FLIR cameras)
       - /dev:/dev
 
     ports:
-      - "8080:8080"  # Dashboard + API
+      - "${API_PORT:-8080}:${API_PORT:-8080}"
 
     deploy:
       resources:
@@ -60,21 +72,26 @@ services:
               capabilities: [gpu]
 
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:${API_PORT:-8080}/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
 
-  # ── Nginx (optional: SSL termination + static dashboard) ─────────
-  # Uncomment if you want to serve dashboard separately with HTTPS
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ── Nginx (optional: SSL termination) ────────────────────────────
+  # Uncomment for HTTPS. Requires certs mounted.
   # nginx:
   #   image: nginx:alpine
   #   container_name: intelfactor-nginx
   #   restart: unless-stopped
   #   volumes:
   #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
-  #     - ./dashboard:/usr/share/nginx/html:ro
   #     - ./certs:/etc/nginx/certs:ro
   #   ports:
   #     - "80:80"

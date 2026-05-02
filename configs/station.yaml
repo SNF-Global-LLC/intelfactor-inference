@@ -16,11 +16,19 @@ model_dir: /opt/intelfactor/models
 edge_yaml_path: /opt/intelfactor/config/edge.yaml
 
 # ── Camera ─────────────────────────────────────────────────────────────
-# protocol: pyspin (FLIR Blackfly S via Spinnaker SDK)
-#           file   (load test image from disk — for dev without hardware)
+# Supported protocols:
+#   file   — load test images from disk (dev/validation without hardware)
+#   pyspin — FLIR Blackfly S via Spinnaker SDK (production)
+#   usb    — USB camera via V4L2 (e.g. /dev/video0)
+#   rtsp   — IP camera via RTSP stream
+#
+# Start with protocol: "file" to validate the pipeline works.
+# Then switch to your real camera protocol once health + sample inference pass.
 camera:
   enabled: true
-  protocol: "file"                # Change to "pyspin" on Jetson with FLIR camera
+  protocol: "file"                # ← Change for production (see examples below)
+  test_image: null                # path to test image (used when protocol=file)
+  source: null                    # RTSP URL or V4L2 device (used when protocol=usb/rtsp)
   serial_number: "25423789"       # FLIR Blackfly S serial (used when protocol=pyspin)
   pixel_format: "Mono8"
   width: 1920
@@ -28,8 +36,40 @@ camera:
   exposure_auto: true
   gain: 10.0
   frame_rate: 30.0
-  source: null                    # reserved for future v4l2/rtsp
-  test_image: null                # path to test image (used when protocol=file)
+  fps_target: 30
+
+# Camera protocol examples (uncomment one block):
+#
+# --- FLIR Blackfly S (PySpin / Spinnaker SDK) ---
+# camera:
+#   enabled: true
+#   protocol: "pyspin"
+#   serial_number: "25423789"      # Find via: SpinView or `python -c "import PySpin; ..."`
+#   pixel_format: "Mono8"
+#   width: 1920
+#   height: 1200
+#   exposure_auto: true
+#   gain: 10.0
+#   frame_rate: 30.0
+#
+# --- USB Camera (V4L2) ---
+# camera:
+#   enabled: true
+#   protocol: "usb"
+#   source: "/dev/video0"          # Check with: ls /dev/video*
+#   width: 1920
+#   height: 1080
+#   frame_rate: 30.0
+#   fps_target: 30
+#
+# --- IP Camera (RTSP) ---
+# camera:
+#   enabled: true
+#   protocol: "rtsp"
+#   source: "rtsp://192.168.1.100:554/stream"
+#   width: 1920
+#   height: 1080
+#   fps_target: 15
 
 # ── Vision Inference ───────────────────────────────────────────────────
 # Leave blank for auto-detection based on hardware.

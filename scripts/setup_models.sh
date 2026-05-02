@@ -27,6 +27,7 @@ NC='\033[0m'
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 MODEL_DIR="${MODEL_DIR:-/opt/intelfactor/models}"
+ENABLE_LOCAL_LLM="${ENABLE_LOCAL_LLM:-true}"
 
 # Model files
 VISION_ENGINE=""
@@ -83,6 +84,13 @@ create_directories() {
 }
 
 download_language_model() {
+    # Skip if LLM disabled
+    if [ "$ENABLE_LOCAL_LLM" = "false" ]; then
+        log_info "Language model: SKIPPED (ENABLE_LOCAL_LLM=false)"
+        log_info "RCA explanations will use statistical fallback instead of LLM."
+        return 0
+    fi
+
     log_info "Setting up Qwen language model..."
 
     # Check if already exists
@@ -222,6 +230,8 @@ verify_models() {
     if [ ${#GGUF_FILES[@]} -gt 0 ]; then
         SIZE=$(du -h "${GGUF_FILES[0]}" | cut -f1)
         echo -e "  ${GREEN}[ok]${NC} Language model: ${GGUF_FILES[0]} ($SIZE)"
+    elif [ "$ENABLE_LOCAL_LLM" = "false" ]; then
+        echo -e "  ${YELLOW}[skip]${NC} Language model: disabled (ENABLE_LOCAL_LLM=false, using statistical fallback)"
     else
         echo -e "  ${RED}[missing]${NC} Language model: $MODEL_DIR/language/*.gguf"
         status=1
@@ -254,16 +264,22 @@ show_help() {
     echo "Usage: $0 [options]"
     echo ""
     echo "Options:"
-    echo "  --quick          Download models only (no TRT build)"
-    echo "  --verify         Verify existing models"
-    echo "  --from-onnx FILE Build TRT engine from ONNX file"
-    echo "  --dir DIR        Models directory (default: $MODEL_DIR)"
-    echo "  -h, --help       Show this help"
+    echo "  --quick              Download models only (no TRT build)"
+    echo "  --verify             Verify existing models"
+    echo "  --from-onnx FILE     Build TRT engine from ONNX file"
+    echo "  --dir DIR            Models directory (default: $MODEL_DIR)"
+    echo "  --no-llm             Skip language model download (RCA uses statistical fallback)"
+    echo "  -h, --help           Show this help"
+    echo ""
+    echo "Environment variables:"
+    echo "  ENABLE_LOCAL_LLM     Set to 'false' to skip LLM download (default: true)"
+    echo "  MODEL_DIR            Models root directory"
     echo ""
     echo "Examples:"
-    echo "  $0                          # Interactive setup"
-    echo "  $0 --verify                 # Check model status"
-    echo "  $0 --from-onnx yolov8n.onnx # Build from ONNX"
+    echo "  $0                              # Interactive setup"
+    echo "  $0 --verify                     # Check model status"
+    echo "  $0 --from-onnx yolov8n.onnx     # Build from ONNX"
+    echo "  ENABLE_LOCAL_LLM=false $0        # Skip LLM, vision only"
     echo ""
 }
 
@@ -277,6 +293,7 @@ while [[ $# -gt 0 ]]; do
         --verify) MODE="verify"; shift ;;
         --from-onnx) ONNX_FILE="$2"; shift 2 ;;
         --dir) MODEL_DIR="$2"; shift 2 ;;
+        --no-llm) ENABLE_LOCAL_LLM="false"; shift ;;
         -h|--help) show_help; exit 0 ;;
         *) echo "Unknown option: $1"; show_help; exit 1 ;;
     esac
