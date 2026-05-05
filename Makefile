@@ -1,13 +1,14 @@
 # IntelFactor Inference Engine - Build & Deploy
 # Usage: make <target>
 
-.PHONY: help build build-edge build-hybrid push test clean deploy-edge deploy-hybrid
+.PHONY: help build build-edge build-hybrid push test clean deploy-edge deploy-hybrid logs restart doctor doctor-python smoke-test
 
 # Configuration
 REGISTRY ?= ghcr.io/tonesgainz
 IMAGE_NAME ?= intelfactor-inference
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 PLATFORM ?= linux/arm64,linux/amd64
+COMPOSE_DIR ?= deploy/hybrid
 
 # Colors
 GREEN := \033[0;32m
@@ -144,8 +145,11 @@ stop: ## Stop all containers
 	-cd deploy/hybrid && docker compose down
 	-cd deploy/hub && docker compose down
 
-logs: ## Show station logs
-	docker logs -f intelfactor-station
+logs: ## Show deployment logs (override COMPOSE_DIR=deploy/edge-only if needed)
+	cd $(COMPOSE_DIR) && docker compose logs -f --tail=100
+
+restart: ## Restart deployment containers (override COMPOSE_DIR=deploy/edge-only if needed)
+	cd $(COMPOSE_DIR) && docker compose restart
 
 # ── Development ──────────────────────────────────────────────────────────────
 
@@ -156,8 +160,14 @@ dev: ## Run in development mode (no Docker)
 	EVIDENCE_DIR=./data/evidence \
 	python3 -m packages.inference.cli serve --api-only
 
-doctor: ## Run system health checks
+doctor: ## Run station deployment doctor
+	./scripts/station_doctor.sh
+
+doctor-python: ## Run Python system health checks
 	python3 scripts/doctor.py --full
+
+smoke-test: ## Run production smoke test against local station API
+	./scripts/production_smoke_test.sh
 
 clean: ## Clean build artifacts
 	rm -rf .pytest_cache __pycache__ .ruff_cache
