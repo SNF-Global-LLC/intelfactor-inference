@@ -54,7 +54,7 @@ services:
 
     volumes:
       # Persistent data (DB + evidence)
-      - station_data:/data
+      - ${DATA_DIR:-/opt/intelfactor/data}:/data
       # Model files from host (read-only)
       - ${MODELS_DIR:-/opt/intelfactor/models}:/models:ro
       # Camera device access (needed for USB/FLIR cameras)
@@ -98,7 +98,3 @@ services:
   #     - "443:443"
   #   depends_on:
   #     - station
-
-volumes:
-  station_data:
-    driver: local

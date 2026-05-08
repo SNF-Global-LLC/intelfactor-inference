@@ -50,12 +50,12 @@ services:
       EVIDENCE_MAX_GB: ${EVIDENCE_MAX_GB:-50}
 
     volumes:
-      - station_data:/data
+      - ${DATA_DIR:-/opt/intelfactor/data}:/data
       - ${MODELS_DIR:-/opt/intelfactor/models}:/models:ro
       - /dev:/dev
 
     ports:
-      - "8080:8080"
+      - "${API_PORT:-8080}:8080"
 
     deploy:
       resources:
@@ -99,12 +99,8 @@ services:
       AWS_REGION: ${AWS_REGION:-us-west-2}
 
     volumes:
-      - station_data:/data:ro  # Read-only access to station data
+      - ${DATA_DIR:-/opt/intelfactor/data}:/data:ro  # Read-only access to station data
 
     depends_on:
       station:
         condition: service_healthy
-
-volumes:
-  station_data:
-    driver: local

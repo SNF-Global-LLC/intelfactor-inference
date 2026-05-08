@@ -12,12 +12,11 @@ import logging
 import os
 import sqlite3
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import requests
-from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
 
@@ -146,6 +145,8 @@ class CloudSyncAgent:
             self._watermarks["events"] = events[-1]["timestamp"]
             self._save_watermarks()
             logger.info("Synced %d events to cloud", len(events))
+        else:
+            logger.warning("Event sync deferred; %d local events remain pending", len(events))
 
     def _sync_triples(self, conn: sqlite3.Connection) -> None:
         """Sync new triples to cloud."""
@@ -177,24 +178,35 @@ class CloudSyncAgent:
             self._watermarks["triples"] = triples[-1]["timestamp"]
             self._save_watermarks()
             logger.info("Synced %d triples to cloud", len(triples))
+        else:
+            logger.warning("Triple sync deferred; %d local triples remain pending", len(triples))
 
     def _sync_evidence(self) -> None:
         """Upload evidence files to S3."""
         if not self._s3_client or not self.evidence_dir.exists():
             return
 
-        # Find evidence files not yet uploaded
-        watermark = self._watermarks.get("evidence_date", "")
+        # Find evidence files not yet uploaded. Use a file-level watermark so
+        # new same-day evidence can keep syncing without skipping partial dates.
+        file_watermark = self._watermarks.get("evidence_file", "")
+        date_watermark = self._watermarks.get("evidence_date", "")
 
         for date_dir in sorted(self.evidence_dir.iterdir()):
             if not date_dir.is_dir() or len(date_dir.name) != 10:
                 continue
 
-            if watermark and date_dir.name < watermark:
+            if date_watermark and not file_watermark and date_dir.name < date_watermark:
                 continue
 
             uploaded = 0
-            for jpg_file in date_dir.glob("*.jpg"):
+            last_uploaded_rel = ""
+            failed_file: Path | None = None
+
+            for jpg_file in sorted(date_dir.glob("*.jpg")):
+                rel_path = f"{date_dir.name}/{jpg_file.name}"
+                if file_watermark and rel_path <= file_watermark:
+                    continue
+
                 s3_key = f"{self.station_id}/{date_dir.name}/{jpg_file.name}"
                 try:
                     self._s3_client.upload_file(
@@ -204,25 +216,40 @@ class CloudSyncAgent:
                         ExtraArgs={"ContentType": "image/jpeg"},
                     )
                     uploaded += 1
+                    last_uploaded_rel = rel_path
                 except Exception as e:
-                    logger.error("S3 upload failed: %s - %s", jpg_file, e)
+                    failed_file = jpg_file
+                    logger.error("S3 upload failed; local evidence kept for retry: %s - %s", jpg_file, e)
+                    break
 
             if uploaded > 0:
                 logger.info("Uploaded %d evidence files for %s", uploaded, date_dir.name)
+                self._watermarks["evidence_file"] = last_uploaded_rel
                 self._watermarks["evidence_date"] = date_dir.name
                 self._save_watermarks()
+
+            if failed_file is not None:
+                logger.warning(
+                    "Evidence sync paused at %s; watermark remains at %s",
+                    failed_file,
+                    self._watermarks.get("evidence_file", ""),
+                )
+                break
 
     def _send_heartbeat(self) -> None:
         """Send station heartbeat to cloud."""
         self._post_to_api("/api/v1/heartbeats", {
             "station_id": self.station_id,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "status": "online",
         })
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
     def _post_to_api(self, endpoint: str, data: dict[str, Any]) -> bool:
         """Post data to cloud API with retry."""
+        if not self.api_url or not self.api_key:
+            logger.warning("Cloud API not configured; skipping %s and keeping local data pending", endpoint)
+            return False
+
         url = f"{self.api_url}{endpoint}"
         headers = {
             "Content-Type": "application/json",
@@ -230,13 +257,24 @@ class CloudSyncAgent:
             "X-Station-ID": self.station_id,
         }
 
-        try:
-            response = requests.post(url, json=data, headers=headers, timeout=30)
-            response.raise_for_status()
-            return True
-        except requests.RequestException as e:
-            logger.warning("API request failed: %s - %s", endpoint, e)
-            raise
+        last_error: Exception | None = None
+        for attempt in range(1, 4):
+            try:
+                response = requests.post(url, json=data, headers=headers, timeout=30)
+                response.raise_for_status()
+                return True
+            except requests.RequestException as e:
+                last_error = e
+                logger.warning("API request failed: %s attempt=%d/3 error=%s", endpoint, attempt, e)
+                if attempt < 3:
+                    time.sleep(min(2 ** (attempt - 1), 10))
+
+        logger.error(
+            "API request exhausted retries: %s error=%s; local data remains pending",
+            endpoint,
+            last_error,
+        )
+        return False
 
 
 def main():
