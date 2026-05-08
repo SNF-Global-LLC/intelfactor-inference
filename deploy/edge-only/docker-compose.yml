@@ -24,9 +24,9 @@ services:
     environment:
       # Storage
       STORAGE_MODE: local
-      SQLITE_DB_PATH: ${CONTAINER_SQLITE_DB_PATH:-/data/local.db}
-      DB_PATH: ${CONTAINER_SQLITE_DB_PATH:-/data/local.db}
-      EVIDENCE_DIR: ${CONTAINER_EVIDENCE_DIR:-/data/evidence}
+      SQLITE_DB_PATH: ${DB_PATH:-/data/local.db}
+      DB_PATH: ${DB_PATH:-/data/local.db}
+      EVIDENCE_DIR: ${EVIDENCE_DIR:-/data/evidence}
 
       # Station identity
       STATION_ID: ${STATION_ID:-station_01}
