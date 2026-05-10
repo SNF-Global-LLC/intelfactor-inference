@@ -40,6 +40,51 @@ intelfactor-station doctor --config configs/station.yaml
 intelfactor-station run --config configs/station.yaml
 ```
 
+## Local Operator Console
+
+`/inspect` is the local edge operator console for factory inspection. It is designed to run offline against local SQLite and local evidence files. It does not require cloud sync, Kafka, S3, CloudFront, training jobs, or the IntelBase web dashboard in the inspection hot path.
+
+### Run `/inspect` Locally
+
+For API-only local validation without camera hardware:
+
+```bash
+mkdir -p data/evidence
+EDGE_API_KEY=local-dev-key \
+STATION_API_KEY=local-dev-key \
+DB_PATH=data/operator-console.db \
+SQLITE_DB_PATH=data/operator-console.db \
+STORAGE_MODE=local \
+EVIDENCE_DIR=data/evidence \
+STATION_ID=station_dev \
+python3 -c "from packages.inference.api_v2 import create_app; app=create_app(); app.run(host='127.0.0.1', port=8080, debug=False)"
+```
+
+Open:
+
+```text
+http://localhost:8080/inspect
+```
+
+The console calls local `/api/...` endpoints. Enter the same local edge API key in the console before loading status, history, queue data, or recording operator actions. If the key is missing or wrong, the API fails closed.
+
+### Seed Local Inspection Rows
+
+Use the seed script to create local PASS, REVIEW, and DEFECT inspection rows for UI validation:
+
+```bash
+python3 scripts/seed_operator_console.py \
+  --db-path data/operator-console.db \
+  --evidence-dir data/evidence \
+  --station-id station_dev
+```
+
+The script is safe to rerun. It replaces the same deterministic seed inspection IDs and writes placeholder evidence files under `data/evidence/operator-console-seed/`.
+
+### Before Jetson Validation
+
+The local API-only path proves the operator console, local SQLite reads, review actions, and evidence routing. It does not prove FLIR capture, TensorRT engine loading, real camera status, touch-screen ergonomics, or station supervisor recovery. Use [docs/JETSON_OPERATOR_CONSOLE_VALIDATION.md](docs/JETSON_OPERATOR_CONSOLE_VALIDATION.md) before calling the console production-ready on Jetson hardware.
+
 ## Architecture
 
 ```
@@ -53,7 +98,7 @@ Camera ──► Vision (YOLOv8/TensorRT) ──► DefectIQ Rules ──► RCA
     └──── Recommender (SOP-linked actions, causal triples)
                 │
                 ▼
-    Operator Dashboard (Chinese-primary, accept/reject feedback)
+    Operator Console (confirm_defect / override_to_pass)
                 │
                 ▼
     Causal Triple Store (defect → cause → outcome, verified by operators)
@@ -108,7 +153,7 @@ packages/inference/
 ├── api_v2.py               # REST API with evidence endpoints
 ├── sync_cloud.py           # Cloud sync agent
 ├── evidence.py             # JPEG evidence writer with disk quota
-└── static/index.html       # Operator dashboard (Chinese-primary)
+└── static/inspect.html     # Local edge operator console
 
 deploy/
 ├── edge-only/              # Single-device deployment
@@ -160,6 +205,7 @@ python -m pytest tests/ -v
 - [Technical Architecture](docs/ARCHITECTURE.md) — System design, data flow, scaling
 - [Cloud Integration](docs/INTEGRATION.md) — Connecting to app.intelfactor.ai
 - [Local Mode](docs/LOCAL_MODE.md) — Edge-only deployment guide
+- [Jetson Operator Console Validation](docs/JETSON_OPERATOR_CONSOLE_VALIDATION.md) — Hardware validation checklist for `/inspect`
 - [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) — Bilingual CN/EN instructions
 
 ## License

@@ -56,12 +56,14 @@ CREATE TABLE IF NOT EXISTS inspections (
     notes TEXT DEFAULT '',
     sync_status TEXT DEFAULT 'pending',
     sync_error TEXT DEFAULT '',
+    last_attempt_at TEXT DEFAULT NULL,
     synced_at TEXT DEFAULT NULL,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_insp_timestamp ON inspections(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_insp_station ON inspections(station_id);
+CREATE INDEX IF NOT EXISTS idx_insp_workspace ON inspections(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_insp_sync ON inspections(sync_status);
 CREATE INDEX IF NOT EXISTS idx_insp_decision ON inspections(decision);
 """
@@ -82,6 +84,7 @@ class InspectionStore:
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         conn = self._connect()
         conn.executescript(_CREATE_SQL)
+        self._ensure_schema(conn)
         conn.commit()
         conn.close()
         logger.info("InspectionStore ready: %s", self.db_path)
@@ -93,6 +96,12 @@ class InspectionStore:
         conn.execute("PRAGMA busy_timeout=5000")
         conn.execute("PRAGMA synchronous=NORMAL")
         return conn
+
+    def _ensure_schema(self, conn: sqlite3.Connection) -> None:
+        """Apply small additive migrations for existing edge databases."""
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(inspections)")}
+        if "last_attempt_at" not in columns:
+            conn.execute("ALTER TABLE inspections ADD COLUMN last_attempt_at TEXT DEFAULT NULL")
 
     def _get_conn(self) -> sqlite3.Connection:
         """Get thread-local connection (pooled per thread)."""
@@ -126,8 +135,8 @@ class InspectionStore:
                     model_version, model_name,
                     capture_ms, inference_ms, total_ms,
                     accepted, rejection_reason, notes,
-                    sync_status, sync_error, synced_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    sync_status, sync_error, last_attempt_at, synced_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 event.inspection_id,
                 event.timestamp.isoformat() if event.timestamp else datetime.now(tz=timezone.utc).isoformat(),
@@ -154,6 +163,7 @@ class InspectionStore:
                 event.notes,
                 event.sync_status.value if isinstance(event.sync_status, SyncStatus) else event.sync_status,
                 event.sync_error,
+                event.last_attempt_at.isoformat() if event.last_attempt_at else None,
                 event.synced_at.isoformat() if event.synced_at else None,
             ))
             conn.commit()
@@ -172,6 +182,7 @@ class InspectionStore:
     def list_inspections(
         self,
         station_id: str | None = None,
+        workspace_id: str | None = None,
         decision: str | None = None,
         sync_status: str | None = None,
         limit: int = 50,
@@ -183,6 +194,9 @@ class InspectionStore:
         if station_id:
             clauses.append("station_id = ?")
             params.append(station_id)
+        if workspace_id:
+            clauses.append("workspace_id = ?")
+            params.append(workspace_id)
         if decision:
             clauses.append("decision = ?")
             params.append(decision)
@@ -218,15 +232,18 @@ class InspectionStore:
         """Update sync status after upload attempt."""
         with self._lock:
             conn = self._get_conn()
-            synced_at = datetime.now(tz=timezone.utc).isoformat() if status == SyncStatus.SYNCED else None
+            now = datetime.now(tz=timezone.utc)
+            last_attempt_at = now.isoformat() if status in {SyncStatus.FAILED, SyncStatus.SYNCED} else ""
+            synced_at = now.isoformat() if status == SyncStatus.SYNCED else None
             conn.execute("""
                 UPDATE inspections
-                SET sync_status = ?, sync_error = ?, synced_at = ?,
+                SET sync_status = ?, sync_error = ?, last_attempt_at = CASE WHEN ? != '' THEN ? ELSE last_attempt_at END,
+                    synced_at = ?,
                     image_original_url = CASE WHEN ? != '' THEN ? ELSE image_original_url END,
                     image_annotated_url = CASE WHEN ? != '' THEN ? ELSE image_annotated_url END
                 WHERE inspection_id = ?
             """, (
-                status.value, error, synced_at,
+                status.value, error, last_attempt_at, last_attempt_at, synced_at,
                 image_original_url, image_original_url,
                 image_annotated_url, image_annotated_url,
                 inspection_id,
@@ -259,15 +276,23 @@ class InspectionStore:
             conn.commit()
             return cur.rowcount > 0
 
-    def get_stats(self) -> dict[str, Any]:
+    def get_stats(self, workspace_id: str | None = None) -> dict[str, Any]:
         """Get inspection store statistics."""
         conn = self._get_conn()
-        total = conn.execute("SELECT COUNT(*) FROM inspections").fetchone()[0]
+        where = "WHERE workspace_id = ?" if workspace_id else ""
+        params = (workspace_id,) if workspace_id else ()
+        total = conn.execute(f"SELECT COUNT(*) FROM inspections {where}", params).fetchone()[0]
         by_decision = {}
-        for row in conn.execute("SELECT decision, COUNT(*) as cnt FROM inspections GROUP BY decision"):
+        for row in conn.execute(
+            f"SELECT decision, COUNT(*) as cnt FROM inspections {where} GROUP BY decision",
+            params,
+        ):
             by_decision[row["decision"]] = row["cnt"]
         by_sync = {}
-        for row in conn.execute("SELECT sync_status, COUNT(*) as cnt FROM inspections GROUP BY sync_status"):
+        for row in conn.execute(
+            f"SELECT sync_status, COUNT(*) as cnt FROM inspections {where} GROUP BY sync_status",
+            params,
+        ):
             by_sync[row["sync_status"]] = row["cnt"]
         return {
             "total": total,
@@ -324,5 +349,6 @@ class InspectionStore:
             notes=row["notes"] or "",
             sync_status=SyncStatus(row["sync_status"]) if row["sync_status"] in SyncStatus._value2member_map_ else SyncStatus.PENDING,
             sync_error=row["sync_error"] or "",
+            last_attempt_at=datetime.fromisoformat(row["last_attempt_at"]) if "last_attempt_at" in row.keys() and row["last_attempt_at"] else None,
             synced_at=datetime.fromisoformat(row["synced_at"]) if row["synced_at"] else None,
         )

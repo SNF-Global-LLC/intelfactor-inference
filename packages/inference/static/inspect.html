@@ -1,405 +1,601 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>IntelFactor Station — Manual Inspection</title>
-<link rel="stylesheet" href="/static/station.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IntelFactor Edge Console</title>
+  <link rel="stylesheet" href="/static/station.css">
 </head>
-<body>
 
-<!-- System Status Bar -->
-<div class="status-bar">
-  <div class="status-bar-left">
-    <div style="display:flex;align-items:center;gap:4px">
-      <span class="status-dot status-dot-green"></span>
-      <span>SYSTEM_ONLINE</span>
-    </div>
-    <div style="display:flex;align-items:center;gap:4px">
-      <span class="status-dot-lime">●</span>
-      <span>EDGE_CONNECTED</span>
-    </div>
-  </div>
-  <div class="status-bar-center">/// INTELFACTOR.AI ///</div>
-  <div class="status-bar-right">
-    <span style="color:#3B82F6">AI_READY</span>
-    <span>EN_US</span>
-  </div>
-</div>
+<body class="edge-console">
 
-<!-- Main Navigation -->
-<div class="main-nav">
-  <div class="nav-brand">
-    <div class="nav-logo">INTELFACTOR<span class="nav-logo-ai">.AI</span></div>
-    <span class="nav-station" id="navStation">Station SNF-Vision-1</span>
-  </div>
-  <div class="nav-actions">
-    <span style="color:#71717A" id="navModel">yolov8n-fp16</span>
-    <div class="nav-ready" id="navReady">
-      <span class="nav-ready-dot"></span>
-      <span>Ready</span>
-    </div>
-    <button class="lang-toggle" onclick="toggleLang()"><span id="langLabel">中文 ▾</span></button>
-  </div>
-</div>
-
-<!-- Background Glow Orbs -->
-<div class="glow-orb-blue"></div>
-<div class="glow-orb-orange"></div>
-
-<!-- Main Container -->
-<div class="container">
-  <!-- Section Label -->
-  <div class="section-label">
-    <div class="section-dot"></div>
-    <span>MANUAL INSPECTION</span>
-  </div>
-
-  <!-- Main Grid -->
-  <div class="main-grid" style="display:grid;grid-template-columns:1fr 400px;gap:24px">
-
-    <!-- Left: Image Card -->
-    <div class="card">
-      <!-- Controls -->
-      <div style="padding:20px;border-bottom:1px solid var(--border);display:flex;gap:12px;align-items:center">
-        <input type="text" id="productId" placeholder="产品 ID（可选）" style="flex:1">
-        <input type="text" id="operatorId" placeholder="操作员 ID（可选）" style="flex:1">
-        <button class="btn btn-primary" id="btnInspect" onclick="runInspection()">
-          检测 Inspect <span class="spinner hidden" id="spinner"></span>
-        </button>
+  <div class="edge-shell">
+    <header class="edge-header">
+      <div>
+        <div class="edge-eyebrow">LOCAL EDGE ONLY</div>
+        <h1>IntelFactor Operator Console</h1>
+        <p>Factory floor inspection station</p>
       </div>
-
-      <!-- Verdict Banner -->
-      <div id="verdictBanner" class="verdict-banner hidden"></div>
-
-      <!-- Image Tabs -->
-      <div id="imgTabs" class="img-tabs hidden">
-        <button class="img-tab active" id="tabAnnotated" onclick="showTab('annotated')">带标注 Annotated</button>
-        <button class="img-tab" id="tabOriginal" onclick="showTab('original')">原图 Original</button>
+      <div class="edge-header-right">
+        <div class="edge-pill" id="navStation">Station loading</div>
+        <div class="edge-pill" id="navModel">Model loading</div>
+        <div class="edge-health" id="navReady">Checking local station</div>
       </div>
+    </header>
 
-      <!-- Image Area -->
-      <div id="imgArea" class="img-area">
-        <div id="imgPlaceholder" class="img-placeholder">
-          <div class="img-placeholder-icon">📷</div>
-          <div class="img-placeholder-text">将产品放置在相机下方</div>
-          <div class="img-placeholder-subtext">Place product under camera</div>
+    <nav class="edge-tabs" aria-label="Operator sections">
+      <button class="edge-tab active" data-panel="livePanel">Live Inspection</button>
+      <button class="edge-tab" data-panel="reviewPanel">Review Queue</button>
+      <button class="edge-tab" data-panel="historyPanel">Inspection History</button>
+      <button class="edge-tab" data-panel="statusPanel">Local System Status</button>
+      <button class="edge-tab" data-panel="settingsPanel">Station Config</button>
+    </nav>
+
+    <main>
+      <section class="edge-panel active" id="livePanel">
+        <div class="edge-live-grid">
+          <article class="edge-camera-card">
+            <div class="edge-card-title">
+              <span>Camera / Evidence</span>
+              <div class="edge-tabs-mini" id="imgTabs">
+                <button class="active" id="tabAnnotated" onclick="showImageTab('annotated')">Annotated</button>
+                <button id="tabOriginal" onclick="showImageTab('original')">Original</button>
+              </div>
+            </div>
+            <div class="edge-image-stage">
+              <div class="edge-image-placeholder" id="imgPlaceholder">
+                <strong>Ready for next part</strong>
+                <span>Place product under camera, then run inspection.</span>
+              </div>
+              <img id="inspectImage" alt="Latest inspection evidence">
+            </div>
+          </article>
+
+          <aside class="edge-verdict-card" id="verdictCard">
+            <div class="edge-verdict-kicker">Current verdict</div>
+            <div class="edge-verdict-label" id="verdictLabel">WAITING</div>
+            <div class="edge-confidence" id="verdictConfidence">No inspection loaded</div>
+            <div class="edge-defect" id="defectSummary">Defect class: —</div>
+            <div class="edge-action-row" id="actionRow">
+              <button class="edge-action confirm" id="btnConfirmDefect" onclick="sendFeedback('confirm_defect')"
+                disabled>
+                Confirm defect
+              </button>
+              <button class="edge-action override" id="btnOverrideToPass" onclick="sendFeedback('override_to_pass')"
+                disabled>
+                Override to pass
+              </button>
+            </div>
+            <div class="edge-note" id="feedbackStatus">Operator action required only for REVIEW or DEFECT.</div>
+          </aside>
         </div>
-        <img id="inspectImage" style="display:none;width:100%;height:auto" alt="Inspection result">
-      </div>
-    </div>
 
-    <!-- Right: Details Cards -->
-    <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="edge-controls-card">
+          <input type="text" id="productId" placeholder="Product / batch ID">
+          <input type="text" id="operatorId" placeholder="Operator ID">
+          <input type="password" id="edgeApiKey" placeholder="Local edge API key">
+          <button class="edge-primary" id="btnSaveKey" onclick="saveApiKey()">Save key</button>
+          <button class="edge-primary inspect" id="btnInspect" onclick="runInspection()">
+            Run inspection <span class="spinner hidden" id="spinner"></span>
+          </button>
+        </div>
 
-      <!-- Performance Card -->
-      <div class="card" id="perfCard" style="display:none">
-        <div class="card-header">性能 Performance</div>
-        <div class="card-body">
-          <div class="stats-grid">
-            <div class="stat">
-              <div class="stat-value" id="captureMs">-</div>
-              <div class="stat-label">CAPTURE (ms)</div>
-            </div>
-            <div class="stat">
-              <div class="stat-value" id="inferenceMs">-</div>
-              <div class="stat-label">INFERENCE (ms)</div>
-            </div>
-            <div class="stat">
-              <div class="stat-value" id="totalMs">-</div>
-              <div class="stat-label">TOTAL (ms)</div>
-            </div>
-            <div class="stat">
-              <div class="stat-value" id="numDets" style="color:var(--text-secondary)">-</div>
-              <div class="stat-label">DETECTIONS</div>
-            </div>
+        <div class="edge-metrics-row">
+          <div><strong id="captureMs">—</strong><span>Capture ms</span></div>
+          <div><strong id="inferenceMs">—</strong><span>Inference ms</span></div>
+          <div><strong id="totalMs">—</strong><span>Total ms</span></div>
+          <div><strong id="numDets">—</strong><span>Detections</span></div>
+        </div>
+      </section>
+
+      <section class="edge-panel" id="reviewPanel">
+        <div class="edge-section-head">
+          <div>
+            <h2>Review Queue</h2>
+            <p>REVIEW inspections only</p>
+          </div>
+          <button class="edge-primary" onclick="loadReviewQueue()">Refresh queue</button>
+        </div>
+        <div class="edge-list" id="reviewList"></div>
+      </section>
+
+      <section class="edge-panel" id="historyPanel">
+        <div class="edge-section-head">
+          <div>
+            <h2>Inspection History</h2>
+            <p>Local inspection records</p>
+          </div>
+          <button class="edge-primary" onclick="loadHistory()">Refresh history</button>
+        </div>
+        <div class="edge-filter-row">
+          <input type="date" id="filterDate" onchange="filterHistoryClientSide()" aria-label="Inspection date">
+          <select id="filterDecision" onchange="loadHistory()">
+            <option value="">All results</option>
+            <option value="PASS">PASS</option>
+            <option value="REVIEW">REVIEW</option>
+            <option value="FAIL">DEFECT</option>
+          </select>
+          <input type="text" id="filterDefect" placeholder="Defect class" oninput="filterHistoryClientSide()">
+          <input type="text" id="filterBatch" placeholder="Batch / product" oninput="filterHistoryClientSide()">
+          <input type="text" id="filterStation" placeholder="Station ID" oninput="filterHistoryClientSide()">
+        </div>
+        <div class="edge-history-grid">
+          <div class="edge-list" id="historyList"></div>
+          <aside class="edge-detail" id="historyDetail">
+            <h3>Inspection detail</h3>
+            <p>Select a row to view local evidence and operator action trail.</p>
+          </aside>
+        </div>
+      </section>
+
+      <section class="edge-panel" id="statusPanel">
+        <div class="edge-section-head">
+          <div>
+            <h2>Local System Status</h2>
+            <p>Local checks only</p>
+          </div>
+          <button class="edge-primary" onclick="loadStatus()">Refresh status</button>
+        </div>
+        <div class="edge-status-grid" id="statusGrid"></div>
+      </section>
+
+      <section class="edge-panel" id="settingsPanel">
+        <div class="edge-section-head">
+          <div>
+            <h2>Station Config</h2>
+            <p>Read-only station setup</p>
           </div>
         </div>
-      </div>
-
-      <!-- Detections Card -->
-      <div class="card" id="detsCard" style="display:none">
-        <div class="card-header">检测结果 Detections</div>
-        <div class="card-body">
-          <div id="detsList" style="font-size:13px;line-height:1.8"></div>
+        <div class="edge-settings-grid">
+          <label>Station ID<input type="text" id="settingStation" readonly></label>
+          <label>Model version<input type="text" id="settingModel" readonly></label>
+          <label>Camera backend<input type="text" id="settingCamera" readonly></label>
+          <label>Capture path<input type="text" id="settingEvidence" readonly></label>
         </div>
-      </div>
-
-      <!-- Operator Feedback Card -->
-      <div class="card" id="feedbackCard" style="display:none">
-        <div class="card-header">操作员反馈 Operator Feedback</div>
-        <div class="card-body">
-          <div style="display:flex;gap:10px">
-            <button class="btn btn-pass" style="flex:1" id="btnAccept" onclick="sendFeedback('accepted')">✓ 接受</button>
-            <button class="btn btn-fail" style="flex:1" id="btnReject" onclick="sendFeedback('rejected')">✗ 拒绝</button>
-          </div>
-          <div id="feedbackStatus" style="margin-top:12px;font-size:13px;color:var(--text-muted)"></div>
-        </div>
-      </div>
-
-      <!-- Recent Inspections Card -->
-      <div class="card">
-        <div class="card-header">最近检测 Recent</div>
-        <div class="recent-list" id="recentList">
-          <div style="color:var(--text-muted);font-size:13px;text-align:center;padding:20px">No inspections yet</div>
-        </div>
-      </div>
-
-    </div>
+        <div class="edge-warning">Guarded station changes require supervisor access.</div>
+      </section>
+    </main>
   </div>
-</div>
 
-<script>
-let currentResult = null;
-let currentTab = 'annotated';
-const sessionHistory = [];
-let lang = 'zh';
+  <script>
+    let currentResult = null;
+    let currentImageTab = 'annotated';
+    let historyItems = [];
 
-// ── Language Toggle ──
-function toggleLang() {
-  lang = lang === 'zh' ? 'en' : 'zh';
-  document.getElementById('langLabel').textContent = lang === 'zh' ? '中文 ▾' : 'EN ▾';
-  // Could add data-lang attributes to elements for full translation
-}
-
-// ── Tab Toggle ──
-function showTab(tab) {
-  currentTab = tab;
-  document.getElementById('tabAnnotated').classList.toggle('active', tab === 'annotated');
-  document.getElementById('tabOriginal').classList.toggle('active', tab === 'original');
-  if (!currentResult) return;
-  const img = document.getElementById('inspectImage');
-  const url = tab === 'annotated' ? currentResult.image_annotated_url : currentResult.image_original_url;
-  if (url) img.src = url + '?t=' + Date.now();
-}
-
-// ── Main Inspection ──
-async function runInspection() {
-  const btn = document.getElementById('btnInspect');
-  const spinner = document.getElementById('spinner');
-  btn.disabled = true;
-  spinner.classList.remove('hidden');
-
-  document.getElementById('feedbackStatus').textContent = '';
-  document.getElementById('btnAccept').disabled = false;
-  document.getElementById('btnReject').disabled = false;
-
-  const body = {};
-  const pid = document.getElementById('productId').value.trim();
-  const oid = document.getElementById('operatorId').value.trim();
-  if (pid) body.product_id = pid;
-  if (oid) body.operator_id = oid;
-
-  try {
-    const resp = await fetch('/api/inspect', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(body),
-    });
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(err.error || resp.statusText);
+    function $(id) {
+      return document.getElementById(id);
     }
-    const data = await resp.json();
-    currentResult = data;
-    currentTab = 'annotated';
-    renderResult(data);
-    addToHistory(data);
-  } catch (err) {
-    alert('Inspection failed: ' + err.message);
-  } finally {
-    btn.disabled = false;
-    spinner.classList.add('hidden');
-  }
-}
 
-// ── Render Result ──
-function renderResult(r) {
-  const verdict = r.verdict || r.decision || 'UNKNOWN';
+    function apiKey() {
+      return localStorage.getItem('edgeApiKey') || $('edgeApiKey').value.trim();
+    }
 
-  // Verdict banner
-  const banner = document.getElementById('verdictBanner');
-  banner.className = 'verdict-banner verdict-banner-' + verdict.toLowerCase();
-  banner.classList.remove('hidden');
+    function authHeaders(extra = {}) {
+      const key = apiKey();
+      return key ? { 'X-Edge-Api-Key': key, ...extra } : extra;
+    }
 
-  const confPct = ((r.confidence || 0) * 100).toFixed(0) + '%';
-  const iid = r.inspection_id || '';
-  const ts = r.timestamp ? new Date(r.timestamp).toLocaleTimeString() : '';
+    function safeLocalUrl(url) {
+      const value = String(url || '');
+      return value.startsWith('/api/') || value.startsWith('/static/') ? value : '';
+    }
 
-  // Provider notes (for experimental models)
-  const provider = r.provider || {};
-  const providerNote = provider.experimental
-    ? `<div class="verdict-meta">Experimental hosted model · policy: ${provider.verdict_policy || 'default'}</div>`
-    : '';
+    function emptyNode(message, warning = false) {
+      const node = document.createElement('div');
+      node.className = warning ? 'edge-empty warning' : 'edge-empty';
+      node.textContent = message;
+      return node;
+    }
 
-  banner.innerHTML = `
-    <div class="verdict-label verdict-label-${verdict.toLowerCase()}">${verdict}</div>
-    <div class="verdict-conf">置信度 Confidence: <span class="verdict-conf-value">${confPct}</span></div>
-    ${iid ? `<div class="verdict-meta">${iid}${ts ? '  ·  ' + ts : ''}</div>` : ''}
-    ${providerNote}
-  `;
+    function saveApiKey() {
+      const key = $('edgeApiKey').value.trim();
+      if (key) localStorage.setItem('edgeApiKey', key);
+      $('feedbackStatus').textContent = key ? 'Local API key saved on this browser.' : 'Enter the local edge API key first.';
+      refreshAll();
+    }
 
-  // Image
-  const img = document.getElementById('inspectImage');
-  const placeholder = document.getElementById('imgPlaceholder');
-  const tabs = document.getElementById('imgTabs');
-  const annotatedUrl = r.image_annotated_url;
-  const originalUrl = r.image_original_url;
+    async function api(path, options = {}) {
+      const headers = authHeaders(options.headers || {});
+      const resp = await fetch(path, { ...options, headers });
+      const payload = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        throw new Error(payload.error || `HTTP ${resp.status}`);
+      }
+      return payload;
+    }
 
-  if (annotatedUrl || originalUrl) {
-    const srcUrl = (currentTab === 'annotated' ? annotatedUrl : originalUrl) || annotatedUrl || originalUrl;
-    img.onerror = function() {
-      if (currentTab === 'annotated' && originalUrl) {
-        img.src = originalUrl + '?t=' + Date.now();
-        img.onerror = function() {
-          img.style.display = 'none';
-          placeholder.style.display = 'flex';
-          placeholder.textContent = 'Image not available';
-        };
-      } else {
+    function fmtTime(ts) {
+      if (!ts) return '—';
+      const d = new Date(ts);
+      return Number.isNaN(d.getTime()) ? String(ts).slice(0, 19) : d.toLocaleString();
+    }
+
+    function verdictOf(row) {
+      return row.verdict || row.decision || 'UNKNOWN';
+    }
+
+    function displayVerdict(verdict) {
+      return verdict === 'FAIL' ? 'DEFECT' : verdict;
+    }
+
+    function confidence(row) {
+      const value = Number(row.confidence || 0);
+      return value ? `${Math.round(value * 100)}%` : '—';
+    }
+
+    function topDetection(row) {
+      const detections = row.detections || [];
+      return detections.length ? detections[0].defect_type : 'none';
+    }
+
+    function showPanel(panelId) {
+      document.querySelectorAll('.edge-panel').forEach(panel => panel.classList.toggle('active', panel.id === panelId));
+      document.querySelectorAll('.edge-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.panel === panelId));
+    }
+
+    document.querySelectorAll('.edge-tab').forEach(tab => {
+      tab.addEventListener('click', () => showPanel(tab.dataset.panel));
+    });
+
+    function showImageTab(tab) {
+      currentImageTab = tab;
+      $('tabAnnotated').classList.toggle('active', tab === 'annotated');
+      $('tabOriginal').classList.toggle('active', tab === 'original');
+      renderImage(currentResult);
+    }
+
+    function renderImage(row) {
+      const img = $('inspectImage');
+      const placeholder = $('imgPlaceholder');
+      if (!row) {
         img.style.display = 'none';
         placeholder.style.display = 'flex';
+        return;
       }
-    };
-    img.src = srcUrl + '?t=' + Date.now();
-    img.style.display = 'block';
-    placeholder.style.display = 'none';
-    tabs.classList.toggle('hidden', !(annotatedUrl && originalUrl));
-    document.getElementById('tabAnnotated').classList.toggle('active', currentTab === 'annotated');
-    document.getElementById('tabOriginal').classList.toggle('active', currentTab === 'original');
-  } else {
-    img.style.display = 'none';
-    placeholder.style.display = 'flex';
-    tabs.classList.add('hidden');
-  }
-
-  // Timing
-  const t = r.timing || {};
-  document.getElementById('perfCard').style.display = '';
-  document.getElementById('captureMs').textContent = (t.capture_ms || 0).toFixed(0);
-  document.getElementById('inferenceMs').textContent = (t.inference_ms || 0).toFixed(0);
-  document.getElementById('totalMs').textContent = (t.total_ms || 0).toFixed(0);
-  document.getElementById('numDets').textContent = r.num_detections || 0;
-
-  // Detections
-  const detsList = document.getElementById('detsList');
-  if (r.detections && r.detections.length > 0) {
-    document.getElementById('detsCard').style.display = '';
-    detsList.innerHTML = r.detections.map(d => {
-      const sevClass = d.severity >= 0.7 ? 'color:var(--fail)' : d.severity >= 0.4 ? 'color:var(--review)' : 'color:var(--pass)';
-      return `<div style="display:flex;justify-content:space-between;padding:4px 0">
-        <span>${d.defect_type || '?'}</span>
-        <span style="${sevClass};font-weight:600">${((d.confidence || 0)*100).toFixed(0)}% · Sev ${((d.severity || 0)*100).toFixed(0)}%</span>
-      </div>`;
-    }).join('');
-  } else {
-    document.getElementById('detsCard').style.display = 'none';
-  }
-
-  // Feedback card (only for FAIL/REVIEW)
-  document.getElementById('feedbackCard').style.display =
-    (verdict === 'FAIL' || verdict === 'REVIEW') ? '' : 'none';
-}
-
-// ── Operator Feedback ──
-async function sendFeedback(action) {
-  if (!currentResult) return;
-  const oid = document.getElementById('operatorId').value.trim();
-
-  document.getElementById('btnAccept').disabled = true;
-  document.getElementById('btnReject').disabled = true;
-
-  try {
-    const resp = await fetch('/api/inspect/' + currentResult.inspection_id + '/feedback', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({action: action, operator_id: oid || 'anonymous'}),
-    });
-    const data = await resp.json();
-    document.getElementById('feedbackStatus').textContent =
-      data.status === 'recorded' ? '✓ Feedback recorded: ' + action : (data.error || 'Unknown error');
-  } catch (err) {
-    document.getElementById('feedbackStatus').textContent = 'Failed: ' + err.message;
-    document.getElementById('btnAccept').disabled = false;
-    document.getElementById('btnReject').disabled = false;
-  }
-}
-
-// ── History ──
-function addToHistory(r) {
-  sessionHistory.unshift(r);
-  if (sessionHistory.length > 50) sessionHistory.pop();
-  renderHistory(sessionHistory);
-}
-
-function renderHistory(items) {
-  const list = document.getElementById('recentList');
-  if (!items || items.length === 0) {
-    list.innerHTML = '<div style="color:var(--text-muted);font-size:13px;text-align:center;padding:20px">No inspections yet</div>';
-    return;
-  }
-  list.innerHTML = items.map(h => {
-    const verdict = h.verdict || h.decision || '?';
-    const ts = h.timestamp ? new Date(h.timestamp).toLocaleTimeString() : '';
-    return `<div class="recent-item" onclick='currentResult = ${JSON.stringify(h).replace(/'/g, "&apos;")}; currentTab = "annotated"; renderResult(${JSON.stringify(h).replace(/'/g, "&apos;")})'>
-      <span class="recent-time">${ts}</span>
-      <span class="badge badge-${verdict.toLowerCase()}">${verdict}</span>
-    </div>`;
-  }).join('');
-}
-
-async function loadHistory() {
-  try {
-    const resp = await fetch('/api/inspections?limit=20');
-    if (!resp.ok) return;
-    const data = await resp.json();
-    const items = (data.inspections || []).map(e => ({
-      ...e,
-      verdict: e.decision || e.verdict,
-      image_annotated_url: '/api/inspections/' + e.inspection_id + '/annotated.jpg',
-      image_original_url: '/api/inspections/' + e.inspection_id + '/original.jpg',
-    }));
-    renderHistory(items);
-  } catch (_) {}
-}
-
-// ── Status Badge Update ──
-async function loadStatus() {
-  try {
-    const resp = await fetch('/api/status');
-    if (!resp.ok) {
-      document.getElementById('navReady').innerHTML = '<span style="color:var(--fail)">● Offline</span>';
-      return;
+      const annotated = safeLocalUrl(row.image_annotated_url);
+      const original = safeLocalUrl(row.image_original_url);
+      const src = (currentImageTab === 'annotated' ? annotated : original) || annotated || original;
+      if (!src) {
+        img.style.display = 'none';
+        placeholder.style.display = 'flex';
+        return;
+      }
+      img.src = `${src}?t=${Date.now()}`;
+      img.style.display = 'block';
+      placeholder.style.display = 'none';
     }
-    const d = await resp.json();
 
-    document.getElementById('navStation').textContent = 'Station ' + (d.station_id || 'SNF-Vision-1');
-
-    const visionKey = d.vision_model_key || d.vision_backend || 'unknown';
-    const isStub = d.vision_is_stub;
-    document.getElementById('navModel').textContent = isStub ? 'stub (dev)' : visionKey;
-
-    const camBackend = d.camera_backend || 'unknown';
-    const camConnected = d.camera_connected;
-    const ready = camConnected || camBackend === 'disabled';
-
-    const readyEl = document.getElementById('navReady');
-    if (ready) {
-      readyEl.innerHTML = '<span class="nav-ready-dot"></span><span>Ready</span>';
-      readyEl.style.color = 'var(--green)';
-    } else {
-      readyEl.innerHTML = '<span>● Camera not connected</span>';
-      readyEl.style.color = 'var(--fail)';
+    function renderResult(row) {
+      currentResult = row;
+      const verdict = verdictOf(row);
+      const display = displayVerdict(verdict);
+      const card = $('verdictCard');
+      card.className = `edge-verdict-card ${verdict.toLowerCase()}`;
+      $('verdictLabel').textContent = display;
+      $('verdictConfidence').textContent = `Confidence ${confidence(row)}`;
+      $('defectSummary').textContent = `Defect class: ${topDetection(row)}`;
+      $('captureMs').textContent = Math.round((row.timing && row.timing.capture_ms) || row.capture_ms || 0);
+      $('inferenceMs').textContent = Math.round((row.timing && row.timing.inference_ms) || row.inference_ms || 0);
+      $('totalMs').textContent = Math.round((row.timing && row.timing.total_ms) || row.total_ms || 0);
+      $('numDets').textContent = row.num_detections || (row.detections || []).length || 0;
+      const needsAction = verdict === 'FAIL' || verdict === 'REVIEW';
+      $('btnConfirmDefect').disabled = !needsAction;
+      $('btnOverrideToPass').disabled = !needsAction;
+      $('feedbackStatus').textContent = needsAction
+        ? 'Choose one operator action for this inspection.'
+        : 'PASS requires no operator action.';
+      renderImage(row);
     }
-  } catch (_) {
-    document.getElementById('navReady').innerHTML = '<span style="color:var(--fail)">● Offline</span>';
-  }
-}
 
-// ── Init ──
-loadHistory();
-loadStatus();
-</script>
+    async function runInspection() {
+      const button = $('btnInspect');
+      const spinner = $('spinner');
+      button.disabled = true;
+      spinner.classList.remove('hidden');
+      try {
+        const body = {};
+        if ($('productId').value.trim()) body.product_id = $('productId').value.trim();
+        if ($('operatorId').value.trim()) body.operator_id = $('operatorId').value.trim();
+        const row = await api('/api/inspect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        currentImageTab = 'annotated';
+        renderResult(row);
+        await Promise.all([loadReviewQueue(), loadHistory(), loadStatus()]);
+      } catch (err) {
+        $('feedbackStatus').textContent = `Inspection unavailable: ${err.message}`;
+      } finally {
+        button.disabled = false;
+        spinner.classList.add('hidden');
+      }
+    }
+
+    async function sendInspectionAction(inspectionId, action, options = {}) {
+      if (!inspectionId) return;
+      try {
+        const operator = $('operatorId').value.trim() || 'operator';
+        await api(`/api/inspect/${inspectionId}/feedback`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action, operator_id: operator, reason: action }),
+        });
+        if (options.updateStatus !== false) {
+          $('feedbackStatus').textContent = action === 'confirm_defect'
+            ? 'Operator action recorded: defect confirmed.'
+            : 'Operator action recorded: result overridden to pass.';
+        }
+        await Promise.all([loadReviewQueue(), loadHistory(), loadStatus()]);
+      } catch (err) {
+        if (options.updateStatus !== false) {
+          $('feedbackStatus').textContent = `Action failed: ${err.message}`;
+        }
+        throw err;
+      }
+    }
+
+    async function sendFeedback(action) {
+      if (!currentResult || !currentResult.inspection_id) return;
+      $('btnConfirmDefect').disabled = true;
+      $('btnOverrideToPass').disabled = true;
+      try {
+        await sendInspectionAction(currentResult.inspection_id, action);
+      } catch (err) {
+        $('btnConfirmDefect').disabled = false;
+        $('btnOverrideToPass').disabled = false;
+      }
+    }
+
+    function inspectionRow(row, options = {}) {
+      const verdict = verdictOf(row);
+      const image = safeLocalUrl(row.image_annotated_url || row.image_original_url);
+      const rowNode = document.createElement('div');
+      rowNode.className = 'edge-row';
+      rowNode.dataset.id = row.inspection_id || '';
+      rowNode.tabIndex = 0;
+      rowNode.role = 'button';
+
+      const thumb = document.createElement('div');
+      thumb.className = 'edge-thumb';
+      if (image) {
+        const img = document.createElement('img');
+        img.src = image;
+        img.alt = '';
+        thumb.appendChild(img);
+      } else {
+        const span = document.createElement('span');
+        span.textContent = 'No image';
+        thumb.appendChild(span);
+      }
+
+      const main = document.createElement('div');
+      main.className = 'edge-row-main';
+      const title = document.createElement('strong');
+      title.textContent = displayVerdict(verdict);
+      const meta = document.createElement('span');
+      meta.textContent = `${fmtTime(row.timestamp || row.created_at)} | ${row.station_id || 'station'} | ${row.product_id || 'no batch'} | ${topDetection(row)}`;
+      main.append(title, meta);
+
+      const side = document.createElement('div');
+      side.className = 'edge-row-side';
+      const badge = document.createElement('span');
+      badge.className = `badge badge-${verdict.toLowerCase()}`;
+      badge.textContent = confidence(row);
+      side.appendChild(badge);
+      if (options.actions) {
+        const actionGrid = document.createElement('div');
+        actionGrid.className = 'edge-row-actions';
+        [
+          ['Confirm defect', 'confirm_defect', 'confirm'],
+          ['Override to pass', 'override_to_pass', 'override'],
+        ].forEach(([label, action, style]) => {
+          const actionButton = document.createElement('button');
+          actionButton.className = `edge-row-button ${style}`;
+          actionButton.type = 'button';
+          actionButton.textContent = label;
+          actionButton.addEventListener('click', async (event) => {
+            event.stopPropagation();
+            actionButton.disabled = true;
+            try {
+              await sendInspectionAction(row.inspection_id, action, { updateStatus: false });
+            } catch (err) {
+              actionButton.disabled = false;
+              const warning = emptyNode(`Action failed: ${err.message}`, true);
+              $('reviewList').prepend(warning);
+            }
+          });
+          actionGrid.appendChild(actionButton);
+        });
+        side.appendChild(actionGrid);
+      } else if (options.open) {
+        const openButton = document.createElement('button');
+        openButton.className = 'edge-row-button open';
+        openButton.type = 'button';
+        openButton.textContent = 'Open';
+        openButton.addEventListener('click', (event) => {
+          event.stopPropagation();
+          openInspection(row.inspection_id, { focusLive: Boolean(options.focusLive) });
+        });
+        side.appendChild(openButton);
+      }
+
+      rowNode.append(thumb, main, side);
+      rowNode.addEventListener('click', () => openInspection(row.inspection_id, { focusLive: Boolean(options.focusLive) }));
+      rowNode.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          openInspection(row.inspection_id, { focusLive: Boolean(options.focusLive) });
+        }
+      });
+      return rowNode;
+    }
+
+    async function loadReviewQueue() {
+      const list = $('reviewList');
+      try {
+        const data = await api('/api/inspections?decision=REVIEW&limit=50');
+        const rows = data.inspections || [];
+        list.replaceChildren(...(rows.length
+          ? rows.map(row => inspectionRow(row, { actions: true, focusLive: true }))
+          : [emptyNode('No REVIEW inspections. The queue is clear.')]));
+      } catch (err) {
+        list.replaceChildren(emptyNode(`Review queue unavailable: ${err.message}`, true));
+      }
+    }
+
+    async function loadHistory() {
+      const decision = $('filterDecision').value;
+      const url = decision ? `/api/inspections?decision=${encodeURIComponent(decision)}&limit=100` : '/api/inspections?limit=100';
+      try {
+        const data = await api(url);
+        historyItems = data.inspections || [];
+        filterHistoryClientSide();
+      } catch (err) {
+        $('historyList').replaceChildren(emptyNode(`History unavailable: ${err.message}`, true));
+      }
+    }
+
+    function filterHistoryClientSide() {
+      const station = $('filterStation').value.trim().toLowerCase();
+      const defect = $('filterDefect').value.trim().toLowerCase();
+      const batch = $('filterBatch').value.trim().toLowerCase();
+      const date = $('filterDate').value;
+      const rows = historyItems.filter(row => {
+        const stationOk = !station || String(row.station_id || '').toLowerCase().includes(station);
+        const defectOk = !defect || topDetection(row).toLowerCase().includes(defect);
+        const batchText = String(row.product_id || row.batch || '').toLowerCase();
+        const batchOk = !batch || batchText.includes(batch);
+        const rowDate = String(row.timestamp || row.created_at || '').slice(0, 10);
+        const dateOk = !date || rowDate === date;
+        return stationOk && defectOk && batchOk && dateOk;
+      });
+      const list = $('historyList');
+      list.replaceChildren(...(rows.length
+        ? rows.map(row => inspectionRow(row, { open: true }))
+        : [emptyNode('No matching inspections.')]));
+    }
+
+    async function openInspection(id, options = {}) {
+      if (!id) return;
+      try {
+        const row = await api(`/api/inspections/${id}`);
+        renderHistoryDetail(row);
+        renderResult(row);
+        if (options.focusLive) {
+          showPanel('livePanel');
+        }
+      } catch (err) {
+        const title = document.createElement('h3');
+        title.textContent = 'Inspection detail';
+        const message = document.createElement('p');
+        message.textContent = `Unable to load inspection: ${err.message}`;
+        $('historyDetail').replaceChildren(title, message);
+      }
+    }
+
+    function renderHistoryDetail(row) {
+      const action = row.accepted === true ? 'Defect confirmed' : row.accepted === false ? 'Overridden to pass' : 'Pending';
+      const imageUrl = safeLocalUrl(row.image_annotated_url || row.image_original_url);
+      const title = document.createElement('h3');
+      title.textContent = row.inspection_id || 'Inspection detail';
+      const imageWrap = document.createElement('div');
+      imageWrap.className = 'edge-detail-image';
+      if (imageUrl) {
+        const image = document.createElement('img');
+        image.src = imageUrl;
+        image.alt = 'Inspection evidence';
+        imageWrap.appendChild(image);
+      } else {
+        imageWrap.textContent = 'No local evidence image';
+      }
+      const dl = document.createElement('dl');
+      [
+        ['Verdict', displayVerdict(verdictOf(row))],
+        ['Confidence', confidence(row)],
+        ['Defect', topDetection(row)],
+        ['Operator action', action],
+        ['Sync status', row.sync_status || 'local'],
+        ['Original evidence', row.image_original_path || '—'],
+        ['Annotated evidence', row.image_annotated_path || '—'],
+      ].forEach(([label, value]) => {
+        const dt = document.createElement('dt');
+        dt.textContent = label;
+        const dd = document.createElement('dd');
+        dd.textContent = value;
+        dl.append(dt, dd);
+      });
+      const trailTitle = document.createElement('h4');
+      trailTitle.textContent = 'Operator action trail';
+      const trail = document.createElement('ol');
+      trail.className = 'edge-action-trail';
+      const created = document.createElement('li');
+      created.textContent = `${fmtTime(row.timestamp)} | inspection recorded`;
+      trail.appendChild(created);
+      if (row.accepted !== null && row.accepted !== undefined) {
+        const actionItem = document.createElement('li');
+        actionItem.textContent = `${fmtTime(row.timestamp)} | ${action} | ${row.operator_id || 'operator'}`;
+        trail.appendChild(actionItem);
+      }
+      $('historyDetail').replaceChildren(title, imageWrap, dl, trailTitle, trail);
+    }
+
+    async function loadStatus() {
+      const grid = $('statusGrid');
+      try {
+        const [status, stats, sync, evidence] = await Promise.all([
+          api('/api/status').catch(err => ({ error: err.message })),
+          api('/api/inspections/stats').catch(() => ({})),
+          api('/api/inspections/sync').catch(() => ({ enabled: false })),
+          api('/api/evidence/stats').catch(() => ({})),
+        ]);
+        const cameraBackend = status.camera_backend || 'unknown';
+        const cameraConnected = Boolean(status.camera_connected);
+        const model = status.vision_model_key || status.vision_backend || 'unknown';
+        const storage = status.storage_mode || 'local';
+        const syncCount = stats.by_sync_status
+          ? ((stats.by_sync_status.pending || 0) + (stats.by_sync_status.failed || 0))
+          : (stats.pending_sync || stats.pending || sync.pending || 0);
+        const diskMb = evidence.total_bytes ? `${Math.round(evidence.total_bytes / 1024 / 1024)} MB` : '—';
+        $('navStation').textContent = status.station_id || 'Station local';
+        $('navModel').textContent = model;
+        $('navReady').textContent = status.error ? 'API needs local key' : (cameraConnected ? 'Camera online' : 'Local mode');
+        $('settingStation').value = status.station_id || 'local station';
+        $('settingModel').value = model;
+        $('settingCamera').value = cameraBackend;
+        $('settingEvidence').value = status.evidence_dir || 'local evidence directory';
+        grid.replaceChildren(...[
+          statusTile('Camera', cameraConnected ? 'Connected' : `${cameraBackend} not connected`, cameraConnected ? 'ok' : 'warn'),
+          statusTile('Model loaded', model, model === 'unknown' ? 'warn' : 'ok'),
+          statusTile('SQLite healthy', storage, storage === 'local' ? 'ok' : 'warn'),
+          statusTile('Disk evidence', diskMb, 'ok'),
+          statusTile('Sync queue', `${syncCount} pending`, syncCount ? 'warn' : 'ok'),
+        ]);
+      } catch (err) {
+        grid.replaceChildren(emptyNode(`Status unavailable: ${err.message}`, true));
+      }
+    }
+
+    function statusTile(label, value, state) {
+      const node = document.createElement('div');
+      node.className = `edge-status-tile ${state}`;
+      const labelNode = document.createElement('span');
+      labelNode.textContent = label;
+      const valueNode = document.createElement('strong');
+      valueNode.textContent = value;
+      node.append(labelNode, valueNode);
+      return node;
+    }
+
+    async function refreshAll() {
+      await Promise.all([loadStatus(), loadReviewQueue(), loadHistory()]);
+    }
+
+    $('edgeApiKey').value = localStorage.getItem('edgeApiKey') || '';
+    refreshAll();
+  </script>
 
 </body>
+
 </html>

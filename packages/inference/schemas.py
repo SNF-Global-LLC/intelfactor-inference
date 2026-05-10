@@ -9,7 +9,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 
 # ── Enums ──────────────────────────────────────────────────────────────
@@ -35,10 +35,8 @@ class OperatorAction(str, Enum):
 
 class SyncStatus(str, Enum):
     PENDING = "pending"
-    UPLOADING = "uploading"
     SYNCED = "synced"
     FAILED = "failed"
-    PERMANENT_ERROR = "permanent_error"  # Exceeded max retry attempts
 
 
 class DeviceClass(str, Enum):
@@ -152,6 +150,7 @@ class InspectionEvent:
     # Sync
     sync_status: SyncStatus = SyncStatus.PENDING
     sync_error: str = ""
+    last_attempt_at: datetime | None = None
     synced_at: datetime | None = None
 
 

@@ -7,10 +7,9 @@ Supports both STORAGE_MODE=local (SQLite) and cloud modes.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -28,19 +27,19 @@ def create_app(
     Pass in a running StationRuntime for live data.
     """
     try:
-        from flask import Flask, jsonify, request, send_file, abort
+        from flask import Flask, abort, jsonify, request, send_file
     except ImportError:
         raise RuntimeError("Flask required for station API (pip install flask)")
 
     from packages.inference.storage import (
         get_event_store,
         get_evidence_store,
-        get_triple_store,
         get_storage_mode,
+        get_triple_store,
     )
 
     # Production visibility metrics
-    from packages.visibility.metrics_api import metrics_bp, init_metrics
+    from packages.visibility.metrics_api import init_metrics, metrics_bp
 
     app = Flask(
         __name__,
@@ -50,39 +49,57 @@ def create_app(
     app.config["JSON_AS_ASCII"] = False  # Allow Chinese in JSON responses
 
     # ── API Key Auth ────────────────────────────────────────────────
-    _api_key = os.environ.get("STATION_API_KEY", "")
+    _api_key = os.environ.get("EDGE_API_KEY") or os.environ.get("STATION_API_KEY", "")
+    _workspace_id = os.environ.get("WORKSPACE_ID", "").strip()
     if not _api_key:
         logger.warning(
-            "STATION_API_KEY not set — mutating endpoints are UNPROTECTED. "
-            "Set STATION_API_KEY in environment before production deployment."
+            "EDGE_API_KEY/STATION_API_KEY not set — API endpoints will fail closed. "
+            "Set EDGE_API_KEY or STATION_API_KEY before deployment."
         )
 
     def _require_api_key() -> tuple[Any, int] | None:
         """
-        Check API key for mutating endpoints.
+        Check API key for station API endpoints.
         Returns a (response, status) tuple to return immediately if auth fails,
-        or None if auth passes (or no key is configured).
+        or None if auth passes.
         """
         if not _api_key:
-            return None  # dev mode — no key configured
+            logger.error(
+                "auth_failed reason=api_key_not_configured path=%s", request.path
+            )
+            return jsonify({"error": "Station API key is not configured"}), 503
 
-        # Accept X-API-Key header or Authorization: Bearer <token>
-        provided = request.headers.get("X-API-Key") or ""
+        # Accept edge-specific, legacy station, or Authorization: Bearer <token>.
+        provided = (
+            request.headers.get("X-Edge-Api-Key")
+            or request.headers.get("X-API-Key")
+            or ""
+        )
         if not provided:
             auth_header = request.headers.get("Authorization", "")
             if auth_header.startswith("Bearer "):
                 provided = auth_header[7:]
 
         if provided != _api_key:
+            logger.warning("auth_failed reason=bad_api_key path=%s", request.path)
             return jsonify({"error": "Unauthorized"}), 401
 
+        return None
+
+    @app.before_request
+    def _protect_api_routes():
+        """Require edge auth for every API route. Health and UI shells stay open."""
+        if request.path.startswith("/api/"):
+            return _require_api_key()
         return None
 
     # Store runtime reference
     app.runtime = runtime
 
     # Get evidence directory from env
-    evidence_dir = Path(os.environ.get("EVIDENCE_DIR", "/opt/intelfactor/data/evidence"))
+    evidence_dir = Path(
+        os.environ.get("EVIDENCE_DIR", "/opt/intelfactor/data/evidence")
+    )
 
     # ── Security helpers ──────────────────────────────────────────────
     _MAX_LIMIT = 1000
@@ -106,6 +123,50 @@ def create_app(
             return None  # path escapes evidence_dir
         return full if full.exists() else None
 
+    def _workspace_mismatch(candidate: str | None) -> bool:
+        return bool(_workspace_id and candidate and candidate != _workspace_id)
+
+    def _workspace_for_new_record(
+        data: dict[str, Any],
+    ) -> tuple[str, tuple[Any, int] | None]:
+        requested = (
+            data.get("workspace_id") or request.headers.get("X-Workspace-Id") or ""
+        ).strip()
+        if _workspace_mismatch(requested):
+            logger.warning(
+                "workspace_mismatch authenticated_workspace=%s requested_workspace=%s path=%s",
+                _workspace_id,
+                requested,
+                request.path,
+            )
+            return "", (jsonify({"error": "Workspace mismatch"}), 403)
+        return requested or _workspace_id, None
+
+    def _require_event_workspace(event: Any) -> tuple[Any, int] | None:
+        event_workspace = (
+            getattr(event, "workspace_id", "")
+            if not isinstance(event, dict)
+            else event.get("workspace_id", "")
+        )
+        if _workspace_mismatch(event_workspace):
+            logger.warning(
+                "workspace_mismatch authenticated_workspace=%s event_workspace=%s path=%s",
+                _workspace_id,
+                event_workspace,
+                request.path,
+            )
+            return jsonify({"error": "Workspace mismatch"}), 403
+        return None
+
+    def _metadata_workspace(metadata: dict[str, Any] | None) -> str:
+        if not metadata:
+            return ""
+        return str(
+            metadata.get("workspace_id")
+            or metadata.get("workspace")
+            or metadata.get("metadata", {}).get("workspace_id", "")
+        )
+
     # Initialize production metrics
     db_path = os.environ.get("DB_PATH", "/opt/intelfactor/data/local.db")
     station_id = os.environ.get("STATION_ID", "SNF-Vision-1")
@@ -118,12 +179,14 @@ def create_app(
     def root():
         """Redirect to the inspection page — primary operator surface."""
         from flask import redirect
+
         return redirect("/inspect")
 
     @app.route("/inspect", methods=["GET"])
     def inspect_page():
         """Serve the manual QC inspection page."""
         from flask import send_from_directory
+
         static_dir = os.path.join(os.path.dirname(__file__), "static")
         return send_from_directory(static_dir, "inspect.html")
 
@@ -131,6 +194,7 @@ def create_app(
     def status_page():
         """Serve the station status / diagnostics page."""
         from flask import send_from_directory
+
         static_dir = os.path.join(os.path.dirname(__file__), "static")
         return send_from_directory(static_dir, "index.html")
 
@@ -150,10 +214,9 @@ def create_app(
     def station_status():
         """Full station status including pipeline stats."""
         if not app.runtime:
-            return jsonify({
-                "storage_mode": get_storage_mode(),
-                "runtime": "not initialized"
-            })
+            return jsonify(
+                {"storage_mode": get_storage_mode(), "runtime": "not initialized"}
+            )
 
         stats = app.runtime.get_stats()
         stats["storage_mode"] = get_storage_mode()
@@ -162,7 +225,9 @@ def create_app(
         stats["camera_backend"] = getattr(app.runtime, "_camera_backend", "unknown")
         stats["camera_connected"] = getattr(app.runtime, "_camera_connected", False)
         stats["vision_model_key"] = getattr(app.runtime, "_vision_model_key", "unknown")
-        stats["language_model_key"] = getattr(app.runtime, "_language_model_key", "unknown")
+        stats["language_model_key"] = getattr(
+            app.runtime, "_language_model_key", "unknown"
+        )
 
         # Add continuous ingest stats if available (RTSP/USB streaming mode)
         if hasattr(app.runtime, "_ingest") and app.runtime._ingest:
@@ -200,6 +265,11 @@ def create_app(
         data = request.get_json()
         if not data:
             return jsonify({"error": "JSON body required"}), 400
+        workspace_id, workspace_err = _workspace_for_new_record(data)
+        if workspace_err is not None:
+            return workspace_err
+        if workspace_id:
+            data["workspace_id"] = workspace_id
 
         event_store = get_event_store()
         try:
@@ -220,12 +290,27 @@ def create_app(
         metadata = evidence_store.get_metadata(event_id)
         if metadata is None:
             abort(404)
+        if _workspace_mismatch(_metadata_workspace(metadata)):
+            logger.warning(
+                "workspace_mismatch authenticated_workspace=%s path=%s",
+                _workspace_id,
+                request.path,
+            )
+            return jsonify({"error": "Workspace mismatch"}), 403
         return jsonify(metadata)
 
     @app.route("/api/v1/evidence/<event_id>/image.jpg", methods=["GET"])
     def get_evidence_image(event_id):
         """Serve evidence JPEG image."""
         evidence_store = get_evidence_store()
+        metadata = evidence_store.get_metadata(event_id)
+        if _workspace_mismatch(_metadata_workspace(metadata)):
+            logger.warning(
+                "workspace_mismatch authenticated_workspace=%s path=%s",
+                _workspace_id,
+                request.path,
+            )
+            return jsonify({"error": "Workspace mismatch"}), 403
         path = evidence_store.get_image_path(event_id)
         if path is None or not path.exists():
             abort(404)
@@ -235,6 +320,14 @@ def create_app(
     def get_evidence_thumb(event_id):
         """Serve evidence thumbnail."""
         evidence_store = get_evidence_store()
+        metadata = evidence_store.get_metadata(event_id)
+        if _workspace_mismatch(_metadata_workspace(metadata)):
+            logger.warning(
+                "workspace_mismatch authenticated_workspace=%s path=%s",
+                _workspace_id,
+                request.path,
+            )
+            return jsonify({"error": "Workspace mismatch"}), 403
         path = evidence_store.get_thumb_path(event_id)
         if path is None or not path.exists():
             # Fall back to main image
@@ -253,6 +346,12 @@ def create_app(
 
         evidence_store = get_evidence_store()
         entries = evidence_store.list_by_date(date)
+        if _workspace_id:
+            entries = [
+                e
+                for e in entries
+                if not _metadata_workspace(e) or _metadata_workspace(e) == _workspace_id
+            ]
         return jsonify({"date": date, "entries": entries, "count": len(entries)})
 
     # Legacy evidence endpoint (compatibility)
@@ -260,6 +359,14 @@ def create_app(
     def get_evidence_legacy(event_id):
         """Legacy: Serve evidence JPEG frame for a given event."""
         evidence_store = get_evidence_store()
+        metadata = evidence_store.get_metadata(event_id)
+        if _workspace_mismatch(_metadata_workspace(metadata)):
+            logger.warning(
+                "workspace_mismatch authenticated_workspace=%s path=%s",
+                _workspace_id,
+                request.path,
+            )
+            return jsonify({"error": "Workspace mismatch"}), 403
         path = evidence_store.get_image_path(event_id)
         if path is None or not path.exists():
             abort(404)
@@ -282,12 +389,14 @@ def create_app(
                     if f.is_file():
                         total_bytes += f.stat().st_size
 
-        return jsonify({
-            "total_bytes": total_bytes,
-            "total_mb": round(total_bytes / (1024 * 1024), 1),
-            "date_dirs": len(date_dirs),
-            "dates": sorted(date_dirs, reverse=True)[:10],  # Last 10 dates
-        })
+        return jsonify(
+            {
+                "total_bytes": total_bytes,
+                "total_mb": round(total_bytes / (1024 * 1024), 1),
+                "date_dirs": len(date_dirs),
+                "dates": sorted(date_dirs, reverse=True)[:10],  # Last 10 dates
+            }
+        )
 
     # ── Triples (using storage abstraction) ─────────────────────────
 
@@ -344,9 +453,16 @@ def create_app(
                ORDER BY timestamp DESC LIMIT 20"""
         ).fetchall()
 
-        columns = [desc[0] for desc in acc._conn.execute(
-            "SELECT * FROM anomaly_alerts LIMIT 0"
-        ).description] if rows else []
+        columns = (
+            [
+                desc[0]
+                for desc in acc._conn.execute(
+                    "SELECT * FROM anomaly_alerts LIMIT 0"
+                ).description
+            ]
+            if rows
+            else []
+        )
 
         alerts = [dict(zip(columns, row)) for row in rows]
         return jsonify({"alerts": alerts})
@@ -378,20 +494,25 @@ def create_app(
             return jsonify({"error": "Missing triple_id or action"}), 400
 
         triple_store = get_triple_store()
-        updated = triple_store.update(data["triple_id"], {
-            "operator_action": data["action"],
-            "operator_id": data.get("operator_id", ""),
-            "outcome_measured": data.get("outcome", {}),
-        })
+        updated = triple_store.update(
+            data["triple_id"],
+            {
+                "operator_action": data["action"],
+                "operator_id": data.get("operator_id", ""),
+                "outcome_measured": data.get("outcome", {}),
+            },
+        )
 
         if not updated:
             return jsonify({"error": "Triple not found"}), 404
 
-        return jsonify({
-            "status": "recorded",
-            "triple_id": data["triple_id"],
-            "action": data["action"],
-        })
+        return jsonify(
+            {
+                "status": "recorded",
+                "triple_id": data["triple_id"],
+                "action": data["action"],
+            }
+        )
 
     # ── Process Parameter Drift ────────────────────────────────────
 
@@ -471,6 +592,11 @@ def create_app(
             return jsonify({"error": "Runtime not initialized"}), 503
 
         metadata = request.get_json(silent=True) or {}
+        workspace_id, workspace_err = _workspace_for_new_record(metadata)
+        if workspace_err is not None:
+            return workspace_err
+        if workspace_id:
+            metadata["workspace_id"] = workspace_id
         result = run_inspection(app.runtime, metadata)
 
         if result.get("verdict") == "ERROR":
@@ -495,6 +621,8 @@ def create_app(
         event = store.get(inspection_id)
         if not event or not event.image_original_path:
             abort(404)
+        if (err := _require_event_workspace(event)) is not None:
+            return err
         full_path = _resolve_evidence_path(event.image_original_path)
         if full_path is None:
             abort(404)
@@ -509,6 +637,8 @@ def create_app(
         event = store.get(inspection_id)
         if not event or not event.image_annotated_path:
             abort(404)
+        if (err := _require_event_workspace(event)) is not None:
+            return err
         full_path = _resolve_evidence_path(event.image_annotated_path)
         if full_path is None:
             abort(404)
@@ -518,7 +648,8 @@ def create_app(
     def inspect_feedback(inspection_id):
         """
         Record operator feedback on an inspection result.
-        Body: {"action": "accepted"|"rejected", "operator_id": "...", "reason": "...", "notes": "..."}
+        Body: {"action": "confirm_defect"|"override_to_pass", "operator_id": "...", "reason": "...", "notes": "..."}
+        Legacy "accepted"/"rejected" actions are still accepted for older edge clients.
         """
         if (err := _require_api_key()) is not None:
             return err
@@ -527,28 +658,42 @@ def create_app(
             return jsonify({"error": "Missing action field"}), 400
 
         action = data["action"]
-        accepted = action == "accepted"
+        if action in {"confirm_defect", "accepted"}:
+            accepted = True
+            reason = data.get("reason", "")
+        elif action in {"override_to_pass", "rejected"}:
+            accepted = False
+            reason = data.get("reason") or action
+        else:
+            return jsonify({"error": "Invalid action"}), 400
         operator_id = data.get("operator_id", "")
-        reason = data.get("reason", "")
         notes = data.get("notes", "")
 
         # Persist to inspection store
         store = getattr(app.runtime, "_inspection_store", None) if app.runtime else None
         if not store:
             return jsonify({"error": "Inspection store not available"}), 503
+        event = store.get(inspection_id)
+        if event and (err := _require_event_workspace(event)) is not None:
+            return err
 
         updated = store.update_feedback(
-            inspection_id, accepted=accepted,
-            operator_id=operator_id, reason=reason, notes=notes,
+            inspection_id,
+            accepted=accepted,
+            operator_id=operator_id,
+            reason=reason,
+            notes=notes,
         )
         if not updated:
             return jsonify({"error": "Inspection not found"}), 404
 
-        return jsonify({
-            "status": "recorded",
-            "inspection_id": inspection_id,
-            "action": action,
-        })
+        return jsonify(
+            {
+                "status": "recorded",
+                "inspection_id": inspection_id,
+                "action": action,
+            }
+        )
 
     @app.route("/api/inspections", methods=["GET"])
     def list_inspections():
@@ -562,16 +707,19 @@ def create_app(
 
         events = store.list_inspections(
             station_id=request.args.get("station_id"),
+            workspace_id=_workspace_id or None,
             decision=request.args.get("decision"),
             sync_status=request.args.get("sync_status"),
             limit=_safe_limit(),
             offset=_safe_offset(),
         )
 
-        return jsonify({
-            "inspections": [_inspection_to_dict(e) for e in events],
-            "count": len(events),
-        })
+        return jsonify(
+            {
+                "inspections": [_inspection_to_dict(e) for e in events],
+                "count": len(events),
+            }
+        )
 
     @app.route("/api/inspections/<inspection_id>", methods=["GET"])
     def get_inspection(inspection_id):
@@ -583,6 +731,8 @@ def create_app(
         event = store.get(inspection_id)
         if not event:
             return jsonify({"error": "Not found"}), 404
+        if (err := _require_event_workspace(event)) is not None:
+            return err
 
         return jsonify(_inspection_to_dict(event))
 
@@ -592,14 +742,16 @@ def create_app(
         store = getattr(app.runtime, "_inspection_store", None) if app.runtime else None
         if not store:
             return jsonify({}), 200
-        return jsonify(store.get_stats())
+        return jsonify(store.get_stats(workspace_id=_workspace_id or None))
 
     @app.route("/api/inspections/sync", methods=["GET"])
     def inspection_sync_stats():
         """Get sync worker statistics."""
         worker = getattr(app.runtime, "_sync_worker", None) if app.runtime else None
         if not worker:
-            return jsonify({"running": False, "message": "Sync worker not configured"}), 200
+            return jsonify(
+                {"running": False, "message": "Sync worker not configured"}
+            ), 200
         return jsonify(worker.get_stats())
 
     return app
@@ -608,18 +760,20 @@ def create_app(
 def _inspection_to_dict(event: Any) -> dict[str, Any]:
     """Convert an InspectionEvent to a JSON-serializable dict."""
     detections = []
-    for d in (event.detections or []):
-        detections.append({
-            "defect_type": d.defect_type,
-            "confidence": round(d.confidence, 4),
-            "severity": round(d.severity, 4),
-            "bbox": {
-                "x": round(d.bbox.x, 1),
-                "y": round(d.bbox.y, 1),
-                "width": round(d.bbox.width, 1),
-                "height": round(d.bbox.height, 1),
-            },
-        })
+    for d in event.detections or []:
+        detections.append(
+            {
+                "defect_type": d.defect_type,
+                "confidence": round(d.confidence, 4),
+                "severity": round(d.severity, 4),
+                "bbox": {
+                    "x": round(d.bbox.x, 1),
+                    "y": round(d.bbox.y, 1),
+                    "width": round(d.bbox.width, 1),
+                    "height": round(d.bbox.height, 1),
+                },
+            }
+        )
 
     return {
         "inspection_id": event.inspection_id,
@@ -628,14 +782,20 @@ def _inspection_to_dict(event: Any) -> dict[str, Any]:
         "workspace_id": event.workspace_id,
         "product_id": event.product_id,
         "operator_id": event.operator_id,
-        "decision": event.decision.value if hasattr(event.decision, "value") else event.decision,
+        "decision": event.decision.value
+        if hasattr(event.decision, "value")
+        else event.decision,
         "confidence": round(event.confidence, 4),
         "detections": detections,
         "num_detections": event.num_detections,
         "image_original_path": event.image_original_path,
         "image_annotated_path": event.image_annotated_path,
-        "image_original_url": event.image_original_url,
-        "image_annotated_url": event.image_annotated_url,
+        "image_original_url": _safe_inspection_image_url(
+            event.inspection_id, "original", event.image_original_path
+        ),
+        "image_annotated_url": _safe_inspection_image_url(
+            event.inspection_id, "annotated", event.image_annotated_path
+        ),
         "model_version": event.model_version,
         "model_name": event.model_name,
         "timing": {
@@ -646,14 +806,29 @@ def _inspection_to_dict(event: Any) -> dict[str, Any]:
         "accepted": event.accepted,
         "rejection_reason": event.rejection_reason,
         "notes": event.notes,
-        "sync_status": event.sync_status.value if hasattr(event.sync_status, "value") else event.sync_status,
+        "sync_status": event.sync_status.value
+        if hasattr(event.sync_status, "value")
+        else event.sync_status,
         "synced_at": event.synced_at.isoformat() if event.synced_at else None,
     }
+
+
+def _safe_inspection_image_url(
+    inspection_id: str, kind: str, path_value: str
+) -> str | None:
+    """Expose auth-protected local image routes instead of raw public object URLs."""
+    if not path_value:
+        return None
+    return f"/api/inspections/{inspection_id}/{kind}.jpg"
 
 
 def run_api(runtime: Any = None, host: str = "0.0.0.0", port: int = 8080) -> None:
     """Run the station API server."""
     app = create_app(runtime)
-    logger.info("Station API v2 starting on %s:%d (mode=%s)", host, port,
-                os.environ.get("STORAGE_MODE", "local"))
+    logger.info(
+        "Station API v2 starting on %s:%d (mode=%s)",
+        host,
+        port,
+        os.environ.get("STORAGE_MODE", "local"),
+    )
     app.run(host=host, port=port, debug=False, threaded=True)
