@@ -15,11 +15,8 @@ import sys
 import tempfile
 import time
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import numpy as np
-import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -35,7 +32,6 @@ from packages.inference.rca.recommender import ActionRecommender
 from packages.inference.schemas import (
     AnomalyAlert,
     BoundingBox,
-    CausalTriple,
     Detection,
     DetectionResult,
     OperatorAction,
@@ -407,7 +403,7 @@ class TestPerformanceBudget:
                         acc.record_event(r)
 
             t0 = time.perf_counter()
-            alerts = acc.check_anomalies(station_id="s1")
+            acc.check_anomalies(station_id="s1")
             check_time = time.perf_counter() - t0
 
             # Anomaly check should complete in under 2 seconds

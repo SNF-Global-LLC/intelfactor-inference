@@ -11,7 +11,7 @@ Integration: Add to your existing station app.py:
 Deploy to: /opt/intelfactor/packages/visibility/metrics_api.py
 """
 
-from flask import Blueprint, jsonify, request, current_app
+from flask import Blueprint, jsonify, request
 from .production_metrics import ProductionMetrics
 import threading
 import time

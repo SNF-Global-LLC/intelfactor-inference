@@ -9,7 +9,6 @@ Runs on ANY device. No GPU required. ~50MB RAM.
 from __future__ import annotations
 
 import logging
-import math
 import sqlite3
 import statistics
 from datetime import datetime, timedelta, timezone

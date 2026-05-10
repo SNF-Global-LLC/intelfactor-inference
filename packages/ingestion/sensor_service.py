@@ -21,7 +21,6 @@ import logging
 import sqlite3
 import statistics
 import threading
-import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable

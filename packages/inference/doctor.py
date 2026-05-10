@@ -21,7 +21,6 @@ import json
 import logging
 import os
 import shutil
-import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -181,7 +180,7 @@ def check_pyspin(serial_number: str = "") -> CheckResult:
                     "Camera (PySpin)", False,
                     f"Camera serial {serial_number} not found ({count} camera(s) present)",
                     "Check serial number in config matches SpinView. "
-                    f"Set camera.serial_number in station.yaml.",
+                    "Set camera.serial_number in station.yaml.",
                 )
             return CheckResult(
                 "Camera (PySpin)", True,
@@ -305,8 +304,8 @@ def check_vision_model(model_dir: str) -> CheckResult:
         return CheckResult(
             "Vision Model", False,
             "No model files found in model directory",
-            f"Run: make build-trt MODEL=yolov8n.pt PRECISION=fp16\n"
-            f"     or: ./scripts/setup_models.sh",
+            "Run: make build-trt MODEL=yolov8n.pt PRECISION=fp16\n"
+            "     or: ./scripts/setup_models.sh",
         )
 
     # ── Stage 2: manifest cross-check (device architecture) ──────────────────
@@ -317,7 +316,6 @@ def check_vision_model(model_dir: str) -> CheckResult:
             try:
                 import json as _json
                 manifest = _json.loads(manifest_path.read_text())
-                built_on = manifest.get("device_model", "")
                 built_arch = manifest.get("device_arch", "")
                 current_arch = os.uname().machine
 
@@ -326,7 +324,7 @@ def check_vision_model(model_dir: str) -> CheckResult:
                         "Vision Model", False,
                         f"Engine architecture mismatch: built for {built_arch}, "
                         f"running on {current_arch}",
-                        f"Rebuild on this device: make build-trt MODEL=<source> PRECISION=fp16",
+                        "Rebuild on this device: make build-trt MODEL=<source> PRECISION=fp16",
                     )
             except Exception:
                 pass  # manifest parse failure is non-fatal — continue to load test

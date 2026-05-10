@@ -15,7 +15,7 @@ import time
 import logging
 import statistics
 from datetime import datetime, timedelta
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, Any
 from pathlib import Path
 
 logger = logging.getLogger("intelfactor.visibility")
@@ -222,8 +222,6 @@ class ProductionMetrics:
 
             inspection_id = event.get("inspection_id", "")
             obj_class = event.get("class", "unknown")
-            confidence = event.get("confidence", 0.0)
-            verdict = event.get("verdict", "PASS")
 
             shift_id = self._get_shift_id(ts)
             hour_bucket = self._get_hour_bucket(ts)
@@ -285,7 +283,6 @@ class ProductionMetrics:
             # Transition: idle -> active
             idle_duration = now - self._state_since
             ts_now = datetime.now().isoformat()
-            ts_start = datetime.fromtimestamp(self._state_since).isoformat()
 
             # Close the idle period
             conn.execute("""

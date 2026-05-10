@@ -161,8 +161,6 @@ class FLIRCapture:
         if self._cam is None:
             raise CaptureError("Camera not initialized")
 
-        PySpin = self._PySpin
-
         self._cam.BeginAcquisition()
         try:
             image_result = self._cam.GetNextImage(timeout=5000)

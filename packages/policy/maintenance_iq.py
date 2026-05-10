@@ -27,7 +27,7 @@ Edge.yaml machine_health block (optional per-machine overrides):
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from packages.ingestion.schemas import (

@@ -8,14 +8,12 @@ import sys
 import tempfile
 from datetime import datetime, timedelta, timezone
 
-import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from packages.inference.schemas import (
     AnomalyAlert,
     BoundingBox,
-    CausalTriple,
     Detection,
     DetectionResult,
     OperatorAction,

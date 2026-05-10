@@ -11,10 +11,9 @@ Every operator interaction generates a causal triple.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
-from packages.inference.providers.base import LanguageProvider
 from packages.inference.rca.accumulator import DefectAccumulator
 from packages.inference.rca.correlator import ProcessCorrelator
 from packages.inference.rca.explainer import RCAExplainer

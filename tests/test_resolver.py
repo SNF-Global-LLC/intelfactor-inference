@@ -5,7 +5,6 @@ Run: python -m pytest tests/ -v
 
 import os
 import sys
-import pytest
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -30,7 +29,7 @@ class TestCapabilityResolver:
         resolver = CapabilityResolver(config={"model_dir": "/tmp/test_models"})
 
         # Force non-Jetson detection so env override works
-        caps = resolver.detect_capabilities()
+        resolver.detect_capabilities()
 
         # Check language model selection
         prefs = DEVICE_LANGUAGE_PREFERENCES[DeviceClass.ORIN_NANO]

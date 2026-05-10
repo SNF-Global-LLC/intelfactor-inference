@@ -185,7 +185,6 @@ class TestDefectTaxonomyYAML:
 
     def test_critical_classes_have_lower_thresholds_than_minor(self, taxonomy_data):
         """Critical classes must have lower or equal thresholds than minor classes."""
-        class_map = {c["name"]: c for c in taxonomy_data["classes"]}
         critical_thresholds = [
             c["confidence_threshold"] for c in taxonomy_data["classes"]
             if c["severity"] == "critical"

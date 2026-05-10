@@ -202,7 +202,6 @@ class TensorRTVisionProvider(VisionProvider):
 
     def _trt_detect(self, frame: np.ndarray) -> list[Detection]:
         """Real TensorRT inference path."""
-        import tensorrt as trt  # noqa: F811
         import pycuda.driver as cuda
 
         # Preprocess: resize, normalize, NCHW, float32
@@ -288,9 +287,7 @@ class TensorRTVisionProvider(VisionProvider):
         num_classes = len(self.defect_classes) if self.defect_classes else 13
         num_outputs = 4 + num_classes  # bbox + class scores
 
-        # Reshape output: YOLOv8 outputs [1, 4+classes, 8400] for 640x640 input
-        # 8400 = (80*80 + 40*40 + 20*20) detection points
-        expected_detections = 8400  # default for 640x640
+        # Reshape output: YOLOv8 outputs [1, 4+classes, anchors] for the input grid.
         try:
             output = raw_output.reshape(1, num_outputs, -1)
             num_detections = output.shape[2]
@@ -471,7 +468,6 @@ class TensorRTVisionProvider(VisionProvider):
 
         for i in range(self.engine.num_io_tensors):
             name = self.engine.get_tensor_name(i)
-            dtype = self.engine.get_tensor_dtype(name)
             shape = self.engine.get_tensor_shape(name)
             size = abs(int(np.prod(shape)))
 

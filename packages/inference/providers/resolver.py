@@ -24,9 +24,6 @@ from packages.inference.schemas import (
     ModelSpec,
 )
 from packages.inference.utils.model_bundle import (
-    load_labels,
-    load_thresholds,
-    load_metadata,
     validate_bundle,
     ModelBundleError,
 )

@@ -3,8 +3,6 @@ Tests for model bundle loader and validator.
 """
 
 import json
-import tempfile
-from pathlib import Path
 
 import pytest
 import yaml

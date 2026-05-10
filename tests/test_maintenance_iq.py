@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 
 import pytest
 
@@ -247,7 +247,6 @@ class TestEdgeCases:
 
     def test_machine_id_isolation(self, iq):
         """Events for machine_a should not affect evaluation of machine_b."""
-        events_a = [_make_event(machine_id="a", z_score=5.0)]
         v_b = iq.evaluate("b", "s1", [_make_event(machine_id="b", z_score=0.5)])
         assert v_b.verdict == HealthVerdict.HEALTHY
 

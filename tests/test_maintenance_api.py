@@ -109,7 +109,7 @@ def client(app):
 
 
 @pytest.fixture
-def svc(app) -> "SensorService":  # type: ignore[name-defined]
+def svc(app):
     """Direct reference to the SensorService attached to the test app."""
     return app.sensor_service
 
@@ -383,7 +383,6 @@ class TestIncidents:
 
     def test_incidents_groups_warning_events_by_machine(self, client, svc):
         """Seed WARNING events and confirm they appear grouped in incidents."""
-        import sqlite3
 
         conn = svc._conn
         now = datetime.now(tz=timezone.utc).replace(tzinfo=None)
@@ -430,7 +429,6 @@ class TestRecommendations:
 
     def test_recommendations_returned_for_warning_machine(self, client, svc):
         """Seed a WARNING-scored event, then check a recommendation is emitted."""
-        import sqlite3
         from packages.ingestion.schemas import SensorReading, SensorType
 
         # Establish baseline so that the next reading scores as anomalous
