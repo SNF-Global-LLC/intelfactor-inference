@@ -353,6 +353,13 @@ class TestInspectionWorkspaceIsolation:
             workspace_id="ws_b",
             decision=Verdict.FAIL,
         ))
+        store.save(InspectionEvent(
+            inspection_id="insp_unscoped",
+            timestamp=datetime.now(),
+            station_id="station_01",
+            workspace_id="",
+            decision=Verdict.PASS,
+        ))
 
         runtime = type("Runtime", (), {"_inspection_store": store})()
 
@@ -369,6 +376,10 @@ class TestInspectionWorkspaceIsolation:
 
     def test_cross_workspace_inspection_read_returns_403(self, isolated_client):
         response = isolated_client.get("/api/inspections/insp_ws_b", headers=AUTH_HEADERS)
+        assert response.status_code == 403
+
+    def test_unscoped_inspection_read_returns_403_when_workspace_is_configured(self, isolated_client):
+        response = isolated_client.get("/api/inspections/insp_unscoped", headers=AUTH_HEADERS)
         assert response.status_code == 403
 
     def test_inspection_detail_does_not_return_public_evidence_url(self, isolated_client):

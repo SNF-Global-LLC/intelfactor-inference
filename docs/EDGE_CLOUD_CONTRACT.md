@@ -27,7 +27,7 @@ The edge station operates **local-first**: inspections are captured, inferred, a
 2. **Edge:** Sync worker queries pending events
 3. **Edge → Cloud:** `POST /api/v1/edge/inspections/upload-urls` (get presigned S3 URLs)
 4. **Edge → S3:** `PUT` to presigned URLs (original.jpg, annotated.jpg)
-5. **Edge → Cloud:** `POST /api/v1/edge/inspections` (metadata + S3 URLs)
+5. **Edge → Cloud:** `POST /api/v1/edge/inspections` (metadata + private S3 object keys)
 6. **Cloud:** Store in DynamoDB, return success
 7. **Edge:** Update `sync_status=synced`
 
@@ -92,8 +92,8 @@ Ingest inspection metadata after assets are uploaded.
     }
   ],
   "num_detections": 1,
-  "image_original_url": "https://s3.amazonaws.com/bucket/evidence/ws_abc123/manual-qc/2026/03/25/station_01-20260325-143022-a1b2c3/original.jpg",
-  "image_annotated_url": "https://s3.amazonaws.com/bucket/evidence/ws_abc123/manual-qc/2026/03/25/station_01-20260325-143022-a1b2c3/annotated.jpg",
+  "image_original_url": "evidence/ws_abc123/manual-qc/2026/03/25/station_01-20260325-143022-a1b2c3/original.jpg",
+  "image_annotated_url": "evidence/ws_abc123/manual-qc/2026/03/25/station_01-20260325-143022-a1b2c3/annotated.jpg",
   "model_version": "yolov8n-v1.2.3",
   "model_name": "yolov8n_cutlery_fp16",
   "timing": {
@@ -223,9 +223,9 @@ Get a single inspection event by ID.
 | `confidence` | Number | 0.0–1.0 aggregate confidence |
 | `detections` | List | Nested detection objects |
 | `severity_counts` | Map | `{critical: 0, major: 1, minor: 0}` |
-| `image_original_url` | String | S3 URL to original image |
-| `image_annotated_url` | String | S3 URL to annotated image |
-| `report_url` | String | S3 URL to JSON report (if separate) |
+| `image_original_url` | String | Private object key for original image |
+| `image_annotated_url` | String | Private object key for annotated image |
+| `report_url` | String | Private object key for JSON report (if separate) |
 | `model_version` | String | Model bundle version |
 | `model_name` | String | Model bundle name |
 | `timing` | Map | `{capture_ms, inference_ms, total_ms}` |
@@ -271,7 +271,7 @@ Get a single inspection event by ID.
 - `401` — Unauthorized (invalid API key)
 - `403` — Forbidden (workspace access denied)
 - `404` — Inspection not found (for feedback endpoint)
-- `409` — Duplicate inspection_id
+- `409` — Conflicting duplicate `inspection_id` with a different workspace or incompatible payload
 - `429` — Rate limited
 - `500` — Internal server error
 
@@ -279,11 +279,12 @@ Get a single inspection event by ID.
 
 ## Security
 
-- All endpoints require `Authorization: Bearer {api_key}` header
+- All endpoints require `X-Edge-Api-Key: {api_key}` or `Authorization: Bearer {api_key}`
 - API keys are workspace-scoped
 - Presigned S3 URLs expire after 15 minutes
 - S3 bucket should have CORS configured for PUT from edge IPs
 - CloudFront or signed URLs recommended for image serving
+- Store private object keys in inspection records. Do not store raw public S3 URLs in metadata responses.
 
 ---
 
@@ -298,7 +299,7 @@ Get a single inspection event by ID.
 - [ ] `POST /api/v1/edge/inspections`
 - [ ] DynamoDB persistence
 - [ ] Payload validation
-- [ ] Duplicate detection handling
+- [ ] Idempotent duplicate handling by `inspection_id`
 
 ### Phase C: Feedback
 - [ ] `POST /api/v1/edge/inspections/{id}/feedback`

@@ -193,11 +193,10 @@ Full API reference: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#api-design)
 ## Tests
 
 ```bash
-# Create venv and run tests
+# Create venv and run focused edge/API tests
 python3 -m venv .venv && source .venv/bin/activate
-pip install pytest flask numpy
-python -m pytest tests/ -v
-# 19 passed
+pip install -e ".[dev]" flask
+python3 -m pytest tests/test_api_v2.py tests/test_sync_inspections.py tests/test_sync_cloud.py -q
 ```
 
 ## Documentation

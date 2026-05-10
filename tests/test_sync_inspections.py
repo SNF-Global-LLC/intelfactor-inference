@@ -5,6 +5,8 @@ Tests for edge inspection sync durability.
 import time
 from datetime import datetime, timedelta
 
+import pytest
+
 from packages.inference.schemas import InspectionEvent, SyncStatus, Verdict
 from packages.inference.storage.inspection_store import InspectionStore
 from packages.inference.sync_inspections import InspectionSyncWorker
@@ -33,6 +35,36 @@ def test_inspection_save_is_idempotent(tmp_path):
     assert len(rows) == 1
     assert rows[0].inspection_id == "insp_dup"
     assert rows[0].decision == Verdict.FAIL
+
+
+def test_duplicate_inspection_id_cannot_change_workspace(tmp_path):
+    store = InspectionStore(tmp_path / "inspections.db")
+
+    store.save(_event("insp_workspace_collision", workspace_id="ws_a"))
+
+    with pytest.raises(ValueError, match="already belongs to workspace"):
+        store.save(_event("insp_workspace_collision", workspace_id="ws_b"))
+
+    saved = store.get("insp_workspace_collision")
+    assert saved.workspace_id == "ws_a"
+
+
+def test_duplicate_save_does_not_requeue_synced_inspection(tmp_path):
+    store = InspectionStore(tmp_path / "inspections.db")
+
+    store.save(_event("insp_synced_duplicate", workspace_id="ws_a"))
+    store.update_sync_status(
+        "insp_synced_duplicate",
+        SyncStatus.SYNCED,
+        image_original_url="evidence/ws_a/insp_synced_duplicate/original.jpg",
+    )
+
+    store.save(_event("insp_synced_duplicate", workspace_id="ws_a"))
+
+    saved = store.get("insp_synced_duplicate")
+    assert saved.sync_status == SyncStatus.SYNCED
+    assert saved.image_original_url == "evidence/ws_a/insp_synced_duplicate/original.jpg"
+    assert store.get_pending_sync(limit=10) == []
 
 
 def test_failed_sync_remains_retryable_with_error_and_attempt_time(tmp_path):

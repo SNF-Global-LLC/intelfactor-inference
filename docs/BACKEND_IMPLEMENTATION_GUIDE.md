@@ -81,7 +81,7 @@ def make_s3_key(workspace_id: str, inspection_id: str, asset: str) -> str:
 **Implementation Notes:**
 - Use `boto3.generate_presigned_url('put_object', ...)` with 15-minute expiry
 - Set `ContentType='image/jpeg'` in the presigned URL params
-- Return `original_key` and `annotated_key` so the ingest endpoint can construct the public URLs
+- Return `original_key` and `annotated_key` so the edge can store private object keys instead of public URLs
 
 ---
 
@@ -122,8 +122,8 @@ class InspectionIngestRequest(BaseModel):
     confidence: float
     detections: list[DetectionPayload]
     num_detections: int
-    image_original_url: str
-    image_annotated_url: str
+    image_original_url: str  # Private object key, despite legacy field name
+    image_annotated_url: str # Private object key, despite legacy field name
     model_version: str
     model_name: str
     timing: TimingPayload
@@ -150,8 +150,8 @@ class InspectionIngestRequest(BaseModel):
     "confidence": 0.92,
     "detections": [...],  # Store as-is (List<Map>)
     "num_detections": 1,
-    "image_original_url": "https://.../original.jpg",
-    "image_annotated_url": "https://.../annotated.jpg",
+    "image_original_url": "evidence/ws_abc123/manual-qc/2026/03/25/station_01-20260325-143022-a1b2c3/original.jpg",
+    "image_annotated_url": "evidence/ws_abc123/manual-qc/2026/03/25/station_01-20260325-143022-a1b2c3/annotated.jpg",
     "model_version": "yolov8n-v1.2.3",
     "model_name": "yolov8n_cutlery_fp16",
     "timing": {"capture_ms": 45.2, "inference_ms": 23.1, "total_ms": 68.3},
@@ -181,7 +181,7 @@ class InspectionIngestRequest(BaseModel):
 - `timestamp` must be valid ISO 8601
 - `confidence` must be 0.0–1.0
 - `detections` length must match `num_detections`
-- Reject duplicate `inspection_id` with `409 Conflict`
+- Treat duplicate `inspection_id` as idempotent when the workspace and payload are compatible; reject only conflicting duplicates
 
 ---
 
@@ -454,8 +454,8 @@ curl -X POST http://localhost:8000/api/v1/edge/inspections \
     "confidence": 0.92,
     "detections": [],
     "num_detections": 0,
-    "image_original_url": "https://s3.../original.jpg",
-    "image_annotated_url": "https://s3.../annotated.jpg",
+    "image_original_url": "evidence/ws_abc123/manual-qc/2026/03/25/station_01-20260325-143022-a1b2c3/original.jpg",
+    "image_annotated_url": "evidence/ws_abc123/manual-qc/2026/03/25/station_01-20260325-143022-a1b2c3/annotated.jpg",
     "model_version": "yolov8n-v1.2.3",
     "model_name": "yolov8n_cutlery_fp16",
     "timing": {"capture_ms": 45.2, "inference_ms": 23.1, "total_ms": 68.3}

@@ -124,7 +124,8 @@ def create_app(
         return full if full.exists() else None
 
     def _workspace_mismatch(candidate: str | None) -> bool:
-        return bool(_workspace_id and candidate and candidate != _workspace_id)
+        candidate = (candidate or "").strip()
+        return bool(_workspace_id and candidate != _workspace_id)
 
     def _workspace_for_new_record(
         data: dict[str, Any],
@@ -132,7 +133,7 @@ def create_app(
         requested = (
             data.get("workspace_id") or request.headers.get("X-Workspace-Id") or ""
         ).strip()
-        if _workspace_mismatch(requested):
+        if _workspace_id and requested and requested != _workspace_id:
             logger.warning(
                 "workspace_mismatch authenticated_workspace=%s requested_workspace=%s path=%s",
                 _workspace_id,
@@ -350,7 +351,7 @@ def create_app(
             entries = [
                 e
                 for e in entries
-                if not _metadata_workspace(e) or _metadata_workspace(e) == _workspace_id
+                if _metadata_workspace(e) == _workspace_id
             ]
         return jsonify({"date": date, "entries": entries, "count": len(entries)})
 

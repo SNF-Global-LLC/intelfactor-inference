@@ -2,9 +2,6 @@
 Tests for evidence writer and doctor diagnostics.
 """
 
-import json
-import os
-import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -285,24 +282,41 @@ class TestDoctor:
 class TestAPIEvidence:
     """Test the /api/evidence/ endpoint."""
 
-    def test_evidence_endpoint_404_without_writer(self):
-        """Evidence endpoint returns 404 when no writer configured."""
+    def test_evidence_endpoint_requires_auth_then_404_without_writer(self, monkeypatch, tmp_path):
+        """Legacy API import uses the authenticated api_v2 surface."""
+        monkeypatch.setenv("STORAGE_MODE", "local")
+        monkeypatch.setenv("SQLITE_DB_PATH", str(tmp_path / "test.db"))
+        monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
+        monkeypatch.setenv("EVIDENCE_DIR", str(tmp_path / "evidence"))
+        monkeypatch.setenv("STATION_API_KEY", "test-secret-key")
+        (tmp_path / "evidence").mkdir()
+
         from packages.inference.api import create_app
 
         app = create_app(runtime=None)
         client = app.test_client()
 
         resp = client.get("/api/evidence/evt_test")
+        assert resp.status_code == 401
+
+        resp = client.get("/api/evidence/evt_test", headers={"X-Edge-Api-Key": "test-secret-key"})
         assert resp.status_code == 404
 
-    def test_dashboard_serves_html(self):
+    def test_dashboard_serves_html(self, monkeypatch, tmp_path):
         """Root path serves the operator dashboard."""
+        monkeypatch.setenv("STORAGE_MODE", "local")
+        monkeypatch.setenv("SQLITE_DB_PATH", str(tmp_path / "test.db"))
+        monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
+        monkeypatch.setenv("EVIDENCE_DIR", str(tmp_path / "evidence"))
+        monkeypatch.setenv("STATION_API_KEY", "test-secret-key")
+        (tmp_path / "evidence").mkdir()
+
         from packages.inference.api import create_app
 
         app = create_app(runtime=None)
         client = app.test_client()
 
-        resp = client.get("/")
+        resp = client.get("/inspect")
         assert resp.status_code == 200
         assert b"IntelFactor" in resp.data
 

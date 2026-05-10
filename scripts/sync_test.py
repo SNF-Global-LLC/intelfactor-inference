@@ -52,7 +52,8 @@ def main() -> int:
         logger.error("CLOUD_API_URL not set — cannot sync. Use --dry-run to preview payload.")
         return 1
     if not api_key and not args.dry_run:
-        logger.warning("CLOUD_API_KEY not set — requests will be unauthenticated")
+        logger.error("CLOUD_API_KEY not set — refusing unauthenticated sync. Use --dry-run to preview payload.")
+        return 1
 
     logger.info("DB:       %s", db_path)
     logger.info("Evidence: %s", evidence_dir)

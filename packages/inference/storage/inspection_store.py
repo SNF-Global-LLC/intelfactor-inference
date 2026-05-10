@@ -143,6 +143,48 @@ class InspectionStore:
 
         with self._lock:
             conn = self._get_conn()
+            existing = conn.execute(
+                """
+                SELECT workspace_id, sync_status, sync_error, last_attempt_at, synced_at,
+                       image_original_url, image_annotated_url
+                FROM inspections
+                WHERE inspection_id = ?
+                """,
+                (event.inspection_id,),
+            ).fetchone()
+
+            workspace_id = event.workspace_id
+            sync_status = event.sync_status.value if isinstance(event.sync_status, SyncStatus) else event.sync_status
+            sync_error = event.sync_error
+            last_attempt_at = event.last_attempt_at.isoformat() if event.last_attempt_at else None
+            synced_at = event.synced_at.isoformat() if event.synced_at else None
+            image_original_url = event.image_original_url
+            image_annotated_url = event.image_annotated_url
+
+            if existing is not None:
+                existing_workspace = existing["workspace_id"] or ""
+                incoming_workspace = event.workspace_id or ""
+                if existing_workspace and incoming_workspace and existing_workspace != incoming_workspace:
+                    raise ValueError(
+                        f"inspection_id {event.inspection_id} already belongs to workspace {existing_workspace}"
+                    )
+                if existing_workspace and not incoming_workspace:
+                    workspace_id = existing_workspace
+
+                default_pending = (
+                    sync_status == SyncStatus.PENDING.value
+                    and not sync_error
+                    and last_attempt_at is None
+                    and synced_at is None
+                )
+                if existing["sync_status"] == SyncStatus.SYNCED.value and default_pending:
+                    sync_status = existing["sync_status"]
+                    sync_error = existing["sync_error"] or ""
+                    last_attempt_at = existing["last_attempt_at"]
+                    synced_at = existing["synced_at"]
+                    image_original_url = image_original_url or existing["image_original_url"] or ""
+                    image_annotated_url = image_annotated_url or existing["image_annotated_url"] or ""
+
             conn.execute("""
                 INSERT OR REPLACE INTO inspections (
                     inspection_id, timestamp, station_id, workspace_id,
@@ -159,7 +201,7 @@ class InspectionStore:
                 event.inspection_id,
                 event.timestamp.isoformat() if event.timestamp else datetime.now(tz=timezone.utc).isoformat(),
                 event.station_id,
-                event.workspace_id,
+                workspace_id,
                 event.product_id,
                 event.operator_id,
                 event.decision.value if isinstance(event.decision, Verdict) else event.decision,
@@ -169,8 +211,8 @@ class InspectionStore:
                 event.image_original_path,
                 event.image_annotated_path,
                 event.report_path,
-                event.image_original_url,
-                event.image_annotated_url,
+                image_original_url,
+                image_annotated_url,
                 event.model_version,
                 event.model_name,
                 event.capture_ms,
@@ -179,10 +221,10 @@ class InspectionStore:
                 1 if event.accepted is True else (0 if event.accepted is False else None),
                 event.rejection_reason,
                 event.notes,
-                event.sync_status.value if isinstance(event.sync_status, SyncStatus) else event.sync_status,
-                event.sync_error,
-                event.last_attempt_at.isoformat() if event.last_attempt_at else None,
-                event.synced_at.isoformat() if event.synced_at else None,
+                sync_status,
+                sync_error,
+                last_attempt_at,
+                synced_at,
             ))
             conn.commit()
 

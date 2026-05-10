@@ -15,7 +15,6 @@ Swap to local TensorRT later by changing vision_model config.
 
 from __future__ import annotations
 
-import io
 import logging
 import time
 from typing import Any
@@ -66,25 +65,30 @@ class RoboflowHostedVisionProvider(VisionProvider):
         super().__init__(model_spec, config)
         
         # Roboflow API configuration (required)
-        self.api_key: str = (config or {}).get("roboflow_api_key", "")
-        self.model_id: str = (config or {}).get("roboflow_model_id", "")
+        cfg = config or {}
+        self.api_key: str = cfg.get("roboflow_api_key", "")
+        self.workspace: str = cfg.get("roboflow_workspace", "")
+        self.workflow_id: str = cfg.get("roboflow_workflow_id", "")
+        self.use_workflow: bool = bool(self.workflow_id)
+        self.model_id: str = self.workflow_id if self.use_workflow else cfg.get("roboflow_model_id", "")
         
         # Inference parameters
-        self.confidence_threshold: float = (config or {}).get("confidence_threshold", 0.5)
-        self.station_id: str = (config or {}).get("station_id", "unknown")
+        self.confidence_threshold: float = cfg.get("confidence_threshold", 0.5)
+        self.station_id: str = cfg.get("station_id", "unknown")
         
         # Verdict routing thresholds
-        self.fail_threshold: float = (config or {}).get("fail_threshold", 0.85)
-        self.review_threshold: float = (config or {}).get("review_threshold", 0.50)
+        self.fail_threshold: float = cfg.get("fail_threshold", 0.85)
+        self.review_threshold: float = cfg.get("review_threshold", 0.50)
         
         # Taxonomy mapping: Roboflow class name -> canonical class name
-        self.class_name_map: dict[str, str] = (config or {}).get("class_name_map", {})
+        self.class_name_map: dict[str, str] = cfg.get("class_name_map", {})
         
         # Defect classes from config (for consistency with local providers)
-        self.defect_classes: list[str] = (config or {}).get("defect_classes", [])
+        self.defect_classes: list[str] = cfg.get("defect_classes", [])
         
         # API endpoint
-        self.api_url: str = "https://detect.roboflow.com"
+        default_api_url = "https://serverless.roboflow.com" if self.use_workflow else "https://detect.roboflow.com"
+        self.api_url: str = cfg.get("roboflow_api_url", default_api_url)
         
         self._session: requests.Session | None = None
 
@@ -95,10 +99,15 @@ class RoboflowHostedVisionProvider(VisionProvider):
                 "Roboflow API key not configured. "
                 "Set roboflow_api_key in station.yaml or ROBOFLOW_API_KEY env var"
             )
+        if self.use_workflow and not self.workspace:
+            raise RuntimeError(
+                "Roboflow workspace not configured. "
+                "Set roboflow_workspace with roboflow_workflow_id in station.yaml"
+            )
         if not self.model_id:
             raise RuntimeError(
                 "Roboflow model_id not configured. "
-                "Set roboflow_model_id in station.yaml (e.g., 'workspace/project/version')"
+                "Set roboflow_model_id or roboflow_workflow_id in station.yaml"
             )
         
         self._session = requests.Session()
@@ -133,8 +142,12 @@ class RoboflowHostedVisionProvider(VisionProvider):
         # Encode frame as JPEG bytes
         encoded = self._encode_frame(frame)
         
-        # Build API URL with model_id and api_key
-        url = f"{self.api_url}/{self.model_id}"
+        # Build API URL with model_id/workflow_id and api_key
+        url = (
+            f"{self.api_url}/{self.workspace}/{self.workflow_id}"
+            if self.use_workflow
+            else f"{self.api_url}/{self.model_id}"
+        )
         params = {"api_key": self.api_key}
         
         # Call Roboflow API with multipart form
