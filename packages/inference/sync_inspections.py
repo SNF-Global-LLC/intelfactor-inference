@@ -16,9 +16,7 @@ Also usable standalone for testing / manual replay.
 
 from __future__ import annotations
 
-import json
 import logging
-import os
 import threading
 import time
 from datetime import timezone
@@ -40,7 +38,7 @@ class InspectionSyncWorker:
         CLOUD_API_KEY: API key for authentication
         SYNC_INTERVAL_SEC: Seconds between sync cycles (default: 30)
         SYNC_BATCH_SIZE: Max inspections per cycle (default: 20)
-        SYNC_MAX_RETRIES: Max retry attempts before marking permanent failure (default: 10)
+        SYNC_MAX_RETRIES: Backoff exponent cap for retry scheduling (default: 10)
     """
 
     def __init__(
@@ -64,11 +62,12 @@ class InspectionSyncWorker:
         self._running = False
         self._thread: threading.Thread | None = None
         self._retry_counts: dict[str, int] = {}  # Track retries per inspection
+        self._next_retry_at: dict[str, float] = {}
         self._stats = {
             "cycles": 0,
             "synced": 0,
             "failed": 0,
-            "permanent_failures": 0,
+            "pending_queue_count": 0,
             "last_cycle": None,
         }
 
@@ -112,7 +111,9 @@ class InspectionSyncWorker:
 
     def _sync_cycle(self) -> None:
         """One pass: find pending, upload, finalize."""
-        pending = self.store.get_pending_sync(limit=self.batch_size)
+        candidate_limit = self.batch_size + len(self._next_retry_at)
+        pending = self.store.get_pending_sync(limit=candidate_limit)
+        self._stats["pending_queue_count"] = len(pending)
         if not pending:
             return
 
@@ -120,30 +121,33 @@ class InspectionSyncWorker:
         self._stats["last_cycle"] = time.time()
         logger.info("Sync cycle: %d pending inspections", len(pending))
 
+        ready = []
+        now = time.time()
         for event in pending:
-            # Check retry limit
+            if len(ready) >= self.batch_size:
+                break
+            next_retry_at = self._next_retry_at.get(event.inspection_id, 0)
+            if next_retry_at <= now:
+                ready.append(event)
+
+        for event in ready:
+            now = time.time()
             retry_count = self._retry_counts.get(event.inspection_id, 0)
-            if retry_count >= self.max_retries:
-                logger.warning(
-                    "Inspection %s exceeded max retries (%d), marking permanent failure",
-                    event.inspection_id, self.max_retries
-                )
-                self.store.update_sync_status(
-                    event.inspection_id,
-                    SyncStatus.PERMANENT_ERROR,
-                    error=f"Max retries ({self.max_retries}) exceeded",
-                )
-                self._stats["permanent_failures"] += 1
-                continue
 
             try:
                 self._sync_one(event)
                 self._stats["synced"] += 1
                 self._retry_counts.pop(event.inspection_id, None)  # Clear retry count on success
+                self._next_retry_at.pop(event.inspection_id, None)
             except Exception as exc:
-                logger.error("Sync failed for %s (retry %d/%d): %s", 
-                           event.inspection_id, retry_count + 1, self.max_retries, exc)
-                self._retry_counts[event.inspection_id] = retry_count + 1
+                next_retry_count = retry_count + 1
+                retry_delay = min(300, 2 ** min(next_retry_count, self.max_retries))
+                logger.error(
+                    "Sync failed for %s (retry %d, next attempt in %ds): %s",
+                    event.inspection_id, next_retry_count, retry_delay, exc,
+                )
+                self._retry_counts[event.inspection_id] = next_retry_count
+                self._next_retry_at[event.inspection_id] = now + retry_delay
                 self.store.update_sync_status(
                     event.inspection_id,
                     SyncStatus.FAILED,
@@ -167,9 +171,7 @@ class InspectionSyncWorker:
             event.inspection_id, event.workspace_id, event.station_id,
         )
 
-        self.store.update_sync_status(event.inspection_id, SyncStatus.UPLOADING)
-
-        headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+        headers = self._auth_headers(event)
 
         # Step A: Request presigned upload URLs
         upload_urls = self._get_upload_urls(event, headers)
@@ -187,29 +189,29 @@ class InspectionSyncWorker:
         if upload_urls.get("original_url") and event.image_original_path:
             original_path = self.evidence_dir / event.image_original_path
             if original_path.exists():
-                original_url = self._upload_file(
+                self._upload_file(
                     original_path,
                     upload_urls["original_url"],
                 )
-                logger.debug("[%s] Original image uploaded → %s", event.inspection_id, original_url)
+                original_url = self._required_upload_key(upload_urls, "original_key", event)
+                logger.debug("[%s] Original image uploaded to %s", event.inspection_id, original_url)
             else:
-                logger.warning(
-                    "[%s] Original image not found at %s — uploading without image",
-                    event.inspection_id, original_path,
+                raise FileNotFoundError(
+                    f"original evidence not found for {event.inspection_id}: {original_path}"
                 )
 
         if upload_urls.get("annotated_url") and event.image_annotated_path:
             annotated_path = self.evidence_dir / event.image_annotated_path
             if annotated_path.exists():
-                annotated_url = self._upload_file(
+                self._upload_file(
                     annotated_path,
                     upload_urls["annotated_url"],
                 )
-                logger.debug("[%s] Annotated image uploaded → %s", event.inspection_id, annotated_url)
+                annotated_url = self._required_upload_key(upload_urls, "annotated_key", event)
+                logger.debug("[%s] Annotated image uploaded to %s", event.inspection_id, annotated_url)
             else:
-                logger.warning(
-                    "[%s] Annotated image not found at %s — uploading without annotated image",
-                    event.inspection_id, annotated_path,
+                raise FileNotFoundError(
+                    f"annotated evidence not found for {event.inspection_id}: {annotated_path}"
                 )
 
         # Step C: Finalize — POST inspection metadata to backend
@@ -240,6 +242,28 @@ class InspectionSyncWorker:
             image_original_url=original_url,
             image_annotated_url=annotated_url,
         )
+
+    def _required_upload_key(
+        self,
+        upload_urls: dict[str, str],
+        key_name: str,
+        event: InspectionEvent,
+    ) -> str:
+        """Return a cloud object key, never a presigned or public URL."""
+        object_key = upload_urls.get(key_name)
+        if not object_key:
+            raise ValueError(
+                f"{key_name} missing from upload-url response for {event.inspection_id}"
+            )
+        return object_key
+
+    def _auth_headers(self, event: InspectionEvent) -> dict[str, str]:
+        """Build edge-auth and workspace headers for cloud sync calls."""
+        headers = {"X-Workspace-Id": event.workspace_id}
+        if self.api_key:
+            headers["X-Edge-Api-Key"] = self.api_key
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        return headers
 
     def _get_upload_urls(
         self,
