@@ -96,19 +96,19 @@ model_bundle:
   strict_taxonomy: true            # Enforce exact match with defect_classes below
 # Canonical source: configs/wiko_taxonomy.yaml — key order = model class IDs — do not reorder
 defect_classes:
-  - scratch_surface     # 0  major   4.6.1
-  - scratch_edge        # 1  major   4.6.1
-  - burr                # 2  critical 4.6.8
-  - pit_corrosion       # 3  major   4.6.1
-  - discoloration       # 4  minor   4.6.1
-  - dent                # 5  major   4.6.1
-  - crack               # 6  critical 4.6.1
-  - warp                # 7  major   4.6.5
-  - handle_gap          # 8  major   4.6.3
-  - handle_crack        # 9  critical 4.6.4
-  - logo_defect         # 10 minor   4.6.9
-  - dimension_out_of_spec # 11 critical 4.6.5
-  - foreign_material    # 12 major   4.6.1
+  - blade_scratch       # 0  major    4.2.3
+  - grinding_mark       # 1  major    4.2.3
+  - surface_dent        # 2  major    3.2.4
+  - surface_crack       # 3  critical 2.1.1
+  - weld_defect         # 4  major    4.6.2
+  - edge_burr           # 5  critical 3.4.2
+  - edge_crack          # 6  critical 4.3.1
+  - handle_defect       # 7  major    6.2.1
+  - bolster_gap         # 8  major    6.1.3
+  - etching_defect      # 9  minor    7.1.1
+  - inclusion           # 10 major    5.3.1
+  - surface_discolor    # 11 minor    5.2.1
+  - overgrind           # 12 major    4.6.5
 
 # ── Language Model (RCA) ──────────────────────────────────────────────
 # Leave blank for auto-detection.

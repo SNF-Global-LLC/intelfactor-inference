@@ -13,6 +13,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+AUTH_HEADERS = {"X-Edge-Api-Key": "test-secret-key"}
+
 # ── Machine assets config (mirrors configs/station.yaml machine_health block) ──
 
 MACHINE_HEALTH_CONFIG = {
@@ -61,11 +63,15 @@ def app(tmp_path):
     defect_db = tmp_path / "defect.db"
     evidence_dir = tmp_path / "evidence"
     evidence_dir.mkdir()
+    old_edge_api_key = os.environ.get("EDGE_API_KEY")
+    old_station_api_key = os.environ.get("STATION_API_KEY")
 
     os.environ["STORAGE_MODE"] = "local"
     os.environ["SQLITE_DB_PATH"] = str(defect_db)
     os.environ["DB_PATH"] = str(defect_db)
     os.environ["EVIDENCE_DIR"] = str(evidence_dir)
+    os.environ["EDGE_API_KEY"] = "test-secret-key"
+    os.environ["STATION_API_KEY"] = "test-secret-key"
 
     # Reset storage factory singletons so they pick up the tmp paths
     import packages.inference.storage.factory as factory
@@ -94,12 +100,31 @@ def app(tmp_path):
     )
     flask_app.config["TESTING"] = True
 
+    from flask.testing import FlaskClient
+
+    class AuthenticatedFlaskClient(FlaskClient):
+        def open(self, *args, **kwargs):
+            headers = dict(AUTH_HEADERS)
+            headers.update(kwargs.pop("headers", {}) or {})
+            kwargs["headers"] = headers
+            return super().open(*args, **kwargs)
+
+    flask_app.test_client_class = AuthenticatedFlaskClient
+
     yield flask_app
 
     svc.stop()
     os.environ.pop("SQLITE_DB_PATH", None)
     os.environ.pop("DB_PATH", None)
     os.environ.pop("EVIDENCE_DIR", None)
+    if old_edge_api_key is None:
+        os.environ.pop("EDGE_API_KEY", None)
+    else:
+        os.environ["EDGE_API_KEY"] = old_edge_api_key
+    if old_station_api_key is None:
+        os.environ.pop("STATION_API_KEY", None)
+    else:
+        os.environ["STATION_API_KEY"] = old_station_api_key
 
 
 @pytest.fixture

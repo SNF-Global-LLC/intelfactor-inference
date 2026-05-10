@@ -93,8 +93,11 @@ def create_app(
             return _require_api_key()
         return None
 
-    # Store runtime reference
+    # Store service references
     app.runtime = runtime
+    app.sensor_service = sensor_service
+    app.maintenance_iq = maintenance_iq
+    app.machine_health_config = machine_health_config or {}
 
     # Get evidence directory from env
     evidence_dir = Path(
@@ -168,6 +171,122 @@ def create_app(
             or metadata.get("metadata", {}).get("workspace_id", "")
         )
 
+    def _json_datetime(value: Any) -> str | None:
+        if value is None:
+            return None
+        if hasattr(value, "isoformat"):
+            return value.isoformat()
+        return str(value)
+
+    def _maintenance_service_unavailable() -> tuple[Any, int]:
+        return jsonify({"error": "Maintenance service not available"}), 503
+
+    def _parse_sensor_type(value: str) -> Any:
+        from packages.ingestion.schemas import SensorType
+
+        return SensorType(value)
+
+    def _sensor_event_to_dict(event: Any) -> dict[str, Any]:
+        if isinstance(event, dict):
+            data = dict(event)
+            data["timestamp"] = _json_datetime(data.get("timestamp"))
+            return data
+
+        sensor_type = getattr(event, "sensor_type", "")
+        verdict = getattr(event, "edge_verdict", "")
+        return {
+            "event_id": event.event_id,
+            "timestamp": _json_datetime(event.timestamp),
+            "station_id": event.station_id,
+            "machine_id": event.machine_id,
+            "sensor_type": sensor_type.value
+            if hasattr(sensor_type, "value")
+            else sensor_type,
+            "raw_values": event.raw_values,
+            "anomaly_score": event.anomaly_score,
+            "confidence": event.confidence,
+            "edge_verdict": verdict.value if hasattr(verdict, "value") else verdict,
+        }
+
+    def _maintenance_verdict_to_dict(verdict: Any) -> dict[str, Any]:
+        status = verdict.verdict.value if hasattr(verdict.verdict, "value") else verdict.verdict
+        return {
+            "verdict_id": verdict.verdict_id,
+            "timestamp": _json_datetime(verdict.timestamp),
+            "machine_id": verdict.machine_id,
+            "station_id": verdict.station_id,
+            "verdict": status,
+            "z_score": verdict.z_score,
+            "confidence": verdict.confidence,
+            "contributing_factors": verdict.contributing_factors,
+            "warning_threshold": verdict.warning_threshold,
+            "critical_threshold": verdict.critical_threshold,
+        }
+
+    def _maintenance_action_to_dict(action: Any) -> dict[str, Any]:
+        action_type = action.action_type.value if hasattr(action.action_type, "value") else action.action_type
+        return {
+            "action_id": action.action_id,
+            "timestamp": _json_datetime(action.timestamp),
+            "machine_id": action.machine_id,
+            "station_id": action.station_id,
+            "verdict": _maintenance_verdict_to_dict(action.verdict),
+            "action_type": action_type,
+            "action_en": action.action_en,
+            "action_zh": action.action_zh,
+            "sop_section": action.sop_section,
+            "urgency": action.urgency,
+            "operator_action": action.operator_action,
+            "operator_id": action.operator_id,
+            "rejection_reason": action.rejection_reason,
+        }
+
+    def _health_score(verdict: Any) -> float:
+        status = verdict.verdict.value if hasattr(verdict.verdict, "value") else verdict.verdict
+        if status == "HEALTHY":
+            return 100.0
+        if status == "WARNING":
+            return max(50.0, round(100.0 - verdict.z_score * 15.0, 1))
+        return max(0.0, round(100.0 - verdict.z_score * 20.0, 1))
+
+    def _build_sensor_reading(data: dict[str, Any]) -> tuple[Any | None, tuple[Any, int] | None]:
+        from packages.ingestion.schemas import SensorReading
+
+        missing = [
+            field
+            for field in ("machine_id", "sensor_type", "raw_values")
+            if field not in data
+        ]
+        if missing:
+            return None, (jsonify({"error": f"Missing required field: {missing[0]}"}), 400)
+        if not isinstance(data.get("raw_values"), dict):
+            return None, (jsonify({"error": "raw_values must be an object"}), 400)
+        try:
+            sensor_type = _parse_sensor_type(str(data["sensor_type"]))
+        except ValueError:
+            return None, (jsonify({"error": "Unknown sensor_type"}), 400)
+
+        timestamp = data.get("timestamp")
+        parsed_timestamp = None
+        if timestamp:
+            try:
+                parsed_timestamp = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
+                if parsed_timestamp.tzinfo is not None:
+                    parsed_timestamp = parsed_timestamp.replace(tzinfo=None)
+            except ValueError:
+                return None, (jsonify({"error": "Invalid timestamp"}), 400)
+
+        reading_kwargs = {
+            "station_id": data.get("station_id") or station_id,
+            "machine_id": data["machine_id"],
+            "sensor_type": sensor_type,
+            "raw_values": data["raw_values"],
+            "mqtt_topic": data.get("mqtt_topic", ""),
+        }
+        if parsed_timestamp is not None:
+            reading_kwargs["timestamp"] = parsed_timestamp
+        return SensorReading(**reading_kwargs), None
+
     # Initialize production metrics
     db_path = os.environ.get("DB_PATH", "/opt/intelfactor/data/local.db")
     station_id = os.environ.get("STATION_ID", "SNF-Vision-1")
@@ -208,6 +327,253 @@ def create_app(
         if app.runtime:
             stats.update(app.runtime.get_stats())
         return jsonify({"status": "ok", "station": stats})
+
+    # ── Maintenance API ─────────────────────────────────────────────
+
+    @app.route("/api/maintenance/health", methods=["GET"])
+    def maintenance_health():
+        """Return current local health verdicts for configured machine assets."""
+        svc = app.sensor_service
+        iq = app.maintenance_iq
+        if svc is None or iq is None:
+            return _maintenance_service_unavailable()
+
+        machines = []
+        for asset in app.machine_health_config.get("assets", []):
+            machine_id = asset.get("machine_id", "")
+            events = svc.get_recent_events_for_machine(machine_id, limit=20)
+            verdict = iq.evaluate(
+                machine_id=machine_id,
+                station_id=station_id,
+                events=events,
+            )
+            latest = events[0] if events else None
+            machines.append(
+                {
+                    **asset,
+                    "verdict": verdict.verdict.value,
+                    "confidence": verdict.confidence,
+                    "z_score": verdict.z_score,
+                    "health_score": _health_score(verdict),
+                    "last_reading_at": _json_datetime(latest.timestamp)
+                    if latest
+                    else None,
+                    "contributing_factors": verdict.contributing_factors,
+                }
+            )
+
+        return jsonify({"machines": machines, "count": len(machines)})
+
+    @app.route("/api/maintenance/sensor-events", methods=["POST"])
+    def maintenance_sensor_event():
+        """Ingest one local machine-health sensor reading."""
+        if app.sensor_service is None:
+            return _maintenance_service_unavailable()
+
+        data = request.get_json(silent=True) or {}
+        reading, error = _build_sensor_reading(data)
+        if error is not None:
+            return error
+
+        event = app.sensor_service.ingest_reading(reading)
+        logger.info(
+            "maintenance_sensor_event_created event_id=%s machine_id=%s sensor_type=%s",
+            event.event_id,
+            event.machine_id,
+            event.sensor_type.value,
+        )
+        return jsonify({"status": "accepted", "event": _sensor_event_to_dict(event)}), 202
+
+    @app.route("/api/maintenance/sensor-events/batch", methods=["POST"])
+    def maintenance_sensor_event_batch():
+        """Ingest a bounded batch of local machine-health sensor readings."""
+        if app.sensor_service is None:
+            return _maintenance_service_unavailable()
+
+        data = request.get_json(silent=True) or {}
+        readings = data.get("readings")
+        if not isinstance(readings, list):
+            return jsonify({"error": "readings must be a list"}), 400
+        if len(readings) > 500:
+            return jsonify({"error": "Batch limit is 500 readings"}), 400
+
+        events = []
+        warnings = 0
+        criticals = 0
+        for item in readings:
+            if not isinstance(item, dict):
+                return jsonify({"error": "Each reading must be an object"}), 400
+            reading, error = _build_sensor_reading(item)
+            if error is not None:
+                return error
+            event = app.sensor_service.ingest_reading(reading)
+            events.append(_sensor_event_to_dict(event))
+            if event.edge_verdict.value == "WARNING":
+                warnings += 1
+            elif event.edge_verdict.value == "CRITICAL":
+                criticals += 1
+
+        logger.info(
+            "maintenance_sensor_batch_created events_processed=%d warnings=%d criticals=%d",
+            len(events),
+            warnings,
+            criticals,
+        )
+        return (
+            jsonify(
+                {
+                    "status": "accepted",
+                    "events_processed": len(events),
+                    "warnings": warnings,
+                    "criticals": criticals,
+                    "events": events,
+                }
+            ),
+            202,
+        )
+
+    @app.route("/api/maintenance/events", methods=["GET"])
+    def maintenance_events():
+        """List machine-health sensor events."""
+        if app.sensor_service is None:
+            return _maintenance_service_unavailable()
+
+        sensor_type = None
+        sensor_type_arg = request.args.get("sensor_type")
+        if sensor_type_arg:
+            try:
+                sensor_type = _parse_sensor_type(sensor_type_arg)
+            except ValueError:
+                return jsonify({"error": "Unknown sensor_type"}), 400
+
+        events = app.sensor_service.list_events(
+            machine_id=request.args.get("machine_id"),
+            sensor_type=sensor_type,
+            verdict=request.args.get("verdict"),
+            limit=_safe_limit(),
+        )
+        return jsonify({"events": events, "count": len(events)})
+
+    @app.route("/api/maintenance/events/<event_id>", methods=["GET"])
+    def maintenance_event(event_id: str):
+        """Return one machine-health sensor event."""
+        if app.sensor_service is None:
+            return _maintenance_service_unavailable()
+
+        event = app.sensor_service.get_event(event_id)
+        if event is None:
+            abort(404)
+        return jsonify(event)
+
+    @app.route("/api/maintenance/baselines", methods=["GET"])
+    def maintenance_baselines():
+        """List local machine-health baseline profiles."""
+        if app.sensor_service is None:
+            return _maintenance_service_unavailable()
+
+        baselines = app.sensor_service.list_baselines()
+        return jsonify({"baselines": baselines, "count": len(baselines)})
+
+    @app.route("/api/maintenance/incidents", methods=["GET"])
+    def maintenance_incidents():
+        """List grouped WARNING/CRITICAL machine-health incidents."""
+        if app.sensor_service is None:
+            return _maintenance_service_unavailable()
+
+        incidents = app.sensor_service.get_incidents(
+            machine_id=request.args.get("machine_id"),
+            limit=_safe_limit(),
+        )
+        return jsonify({"incidents": incidents, "count": len(incidents)})
+
+    @app.route("/api/maintenance/recommendations", methods=["GET"])
+    def maintenance_recommendations():
+        """Return notify-only maintenance recommendations for active incidents."""
+        svc = app.sensor_service
+        iq = app.maintenance_iq
+        if svc is None or iq is None:
+            return _maintenance_service_unavailable()
+
+        recommendations = []
+        incidents = svc.get_incidents(limit=_safe_limit())
+        for incident in incidents:
+            machine_id = incident["machine_id"]
+            events = svc.get_recent_events_for_machine(machine_id, limit=20)
+            verdict = iq.evaluate(
+                machine_id=machine_id,
+                station_id=station_id,
+                events=events,
+            )
+            if verdict.verdict.value == "HEALTHY":
+                continue
+            recommendations.append(_maintenance_action_to_dict(iq.recommend(verdict)))
+
+        return jsonify(
+            {"recommendations": recommendations, "count": len(recommendations)}
+        )
+
+    @app.route("/api/maintenance/feedback", methods=["POST"])
+    def maintenance_feedback():
+        """Record operator feedback on a machine-health sensor event."""
+        if app.sensor_service is None:
+            return _maintenance_service_unavailable()
+
+        data = request.get_json(silent=True) or {}
+        event_id = data.get("event_id")
+        operator_action = data.get("operator_action")
+        if not event_id or not operator_action:
+            return jsonify({"error": "Missing event_id or operator_action"}), 400
+
+        try:
+            updated = app.sensor_service.update_event_feedback(
+                event_id=event_id,
+                operator_action=operator_action,
+                operator_id=data.get("operator_id", ""),
+                rejection_reason=data.get("rejection_reason", ""),
+                comment=data.get("comment", ""),
+            )
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        if not updated:
+            return jsonify({"error": "Event not found"}), 404
+
+        logger.info(
+            "maintenance_feedback_recorded event_id=%s operator_action=%s",
+            event_id,
+            operator_action,
+        )
+        return jsonify({"status": "recorded", "event_id": event_id})
+
+    @app.route("/api/maintenance/stats", methods=["GET"])
+    def maintenance_stats():
+        """Return aggregate local machine-health stats."""
+        if app.sensor_service is None:
+            return _maintenance_service_unavailable()
+
+        stats = app.sensor_service.get_stats()
+        events = app.sensor_service.list_events(limit=_MAX_LIMIT)
+        events_by_machine: dict[str, int] = {}
+        events_by_sensor_type: dict[str, int] = {}
+        last_reading_at = None
+        for event in events:
+            machine_id = event.get("machine_id", "")
+            sensor_type = event.get("sensor_type", "")
+            events_by_machine[machine_id] = events_by_machine.get(machine_id, 0) + 1
+            events_by_sensor_type[sensor_type] = (
+                events_by_sensor_type.get(sensor_type, 0) + 1
+            )
+            if last_reading_at is None:
+                last_reading_at = event.get("timestamp")
+
+        stats.update(
+            {
+                "baseline_count": stats.get("baseline_profiles", 0),
+                "last_reading_at": last_reading_at,
+                "events_by_machine": events_by_machine,
+                "events_by_sensor_type": events_by_sensor_type,
+            }
+        )
+        return jsonify(stats)
 
     # ── Station Status ─────────────────────────────────────────────
 

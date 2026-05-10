@@ -10,9 +10,9 @@
 #   detection_zone: Where on the product this defect typically appears
 
 defects:
-  scratch_surface:
-    description_zh: "刀片表面刮痕"
-    description_en: "Surface scratch on blade body"
+  blade_scratch:
+    description_zh: "刀片划痕"
+    description_en: "Blade scratch"
     common_causes:
       - "Grinding wheel wear or contamination"
       - "Conveyor belt debris"
@@ -23,21 +23,58 @@ defects:
     detection_zone: "blade_body"
     process_parameters: ["grinding_rpm", "polishing_pressure", "belt_speed"]
 
-  scratch_edge:
-    description_zh: "刀刃刮痕"
-    description_en: "Scratch on cutting edge"
+  grinding_mark:
+    description_zh: "研磨痕迹"
+    description_en: "Grinding mark"
     common_causes:
-      - "Sharpening stone misalignment"
-      - "Edge finishing tool wear"
-      - "Improper handling after sharpening"
-    severity_range: [0.4, 1.0]
-    sop_section: "SOP 4.3.1"
-    detection_zone: "cutting_edge"
-    process_parameters: ["sharpening_angle", "stone_grit", "finishing_speed"]
+      - "Grinding wheel wear or contamination"
+      - "Uneven grinding pressure"
+      - "Normal satin finish misread as defect"
+    severity_range: [0.2, 0.9]
+    sop_section: "SOP 4.2.3"
+    detection_zone: "blade_body"
+    process_parameters: ["grinding_rpm", "grinding_pressure", "belt_speed"]
 
-  burr:
-    description_zh: "毛刺"
-    description_en: "Metal burr on edge or surface"
+  surface_dent:
+    description_zh: "表面凹痕"
+    description_en: "Surface dent or depression"
+    common_causes:
+      - "Impact during handling or transport"
+      - "Press alignment drift"
+      - "Fixture damage"
+    severity_range: [0.3, 0.9]
+    sop_section: "SOP 3.2.4"
+    detection_zone: "blade_body"
+    process_parameters: ["press_alignment", "fixture_condition", "handling_method"]
+
+  surface_crack:
+    description_zh: "表面裂纹"
+    description_en: "Surface crack"
+    common_causes:
+      - "Material stress from heat treatment"
+      - "Quenching too rapid"
+      - "Material inclusion defect"
+      - "Grinding thermal damage"
+    severity_range: [0.7, 1.0]
+    sop_section: "SOP 2.1.1"
+    detection_zone: "any"
+    process_parameters: ["quench_rate", "tempering_temp", "grinding_rpm"]
+
+  weld_defect:
+    description_zh: "焊接缺陷"
+    description_en: "Weld defect"
+    common_causes:
+      - "Weld seam contamination"
+      - "Uneven heat input"
+      - "Poor surface preparation"
+    severity_range: [0.4, 1.0]
+    sop_section: "SOP 4.6.2"
+    detection_zone: "blade_bolster_junction"
+    process_parameters: ["weld_current", "weld_speed", "surface_preparation"]
+
+  edge_burr:
+    description_zh: "刃口毛刺"
+    description_en: "Edge burr"
     common_causes:
       - "Stamping die wear"
       - "Insufficient deburring pass"
@@ -47,21 +84,72 @@ defects:
     detection_zone: "edge_perimeter"
     process_parameters: ["die_cycles", "deburring_passes", "cutting_pressure"]
 
-  pit_corrosion:
-    description_zh: "点蚀/腐蚀斑"
-    description_en: "Pitting corrosion or rust spot"
+  edge_crack:
+    description_zh: "刃口裂纹"
+    description_en: "Edge crack"
     common_causes:
-      - "Raw material quality (chloride content)"
-      - "Insufficient passivation"
-      - "Storage humidity above threshold"
-      - "Contamination during handling"
-    severity_range: [0.5, 1.0]
-    sop_section: "SOP 5.1.1"
-    detection_zone: "blade_body"
-    process_parameters: ["passivation_time", "storage_humidity", "rinse_ph"]
+      - "Sharpening stone misalignment"
+      - "Edge finishing tool wear"
+      - "Quenching stress near cutting edge"
+    severity_range: [0.7, 1.0]
+    sop_section: "SOP 4.3.1"
+    detection_zone: "cutting_edge"
+    process_parameters: ["sharpening_angle", "stone_grit", "finishing_speed"]
 
-  discoloration:
-    description_zh: "变色/色差"
+  handle_defect:
+    description_zh: "刀柄缺陷"
+    description_en: "Handle crack, split, or molding defect"
+    common_causes:
+      - "Injection molding temperature too high"
+      - "Material drying insufficient"
+      - "Rivet over-torque"
+      - "Drop damage"
+    severity_range: [0.5, 1.0]
+    sop_section: "SOP 6.2.1"
+    detection_zone: "handle_body"
+    process_parameters: ["mold_temp", "material_moisture", "rivet_torque"]
+
+  bolster_gap:
+    description_zh: "护手间隙"
+    description_en: "Gap between bolster, handle, and blade tang"
+    common_causes:
+      - "Handle molding tolerance drift"
+      - "Rivet tension insufficient"
+      - "Adhesive cure time too short"
+      - "Tang dimension out of spec"
+    severity_range: [0.3, 0.8]
+    sop_section: "SOP 6.1.3"
+    detection_zone: "handle_junction"
+    process_parameters: ["mold_temp", "rivet_torque", "cure_time"]
+
+  etching_defect:
+    description_zh: "蚀刻/商标缺陷"
+    description_en: "Etching or logo defect"
+    common_causes:
+      - "Laser marking alignment drift"
+      - "Etching depth inconsistency"
+      - "Surface preparation insufficient"
+      - "Fixture positioning error"
+    severity_range: [0.2, 0.6]
+    sop_section: "SOP 7.1.1"
+    detection_zone: "blade_flat"
+    process_parameters: ["laser_power", "marking_speed", "focus_distance"]
+
+  inclusion:
+    description_zh: "夹杂物/污染"
+    description_en: "Inclusion or foreign material contamination"
+    common_causes:
+      - "Raw material inclusion"
+      - "Cleaning process failure"
+      - "Environmental contamination"
+      - "Previous process residue"
+    severity_range: [0.2, 0.9]
+    sop_section: "SOP 5.3.1"
+    detection_zone: "any"
+    process_parameters: ["cleaning_concentration", "rinse_cycles", "air_quality"]
+
+  surface_discolor:
+    description_zh: "表面变色"
     description_en: "Surface discoloration or color inconsistency"
     common_causes:
       - "Heat treatment temperature variation"
@@ -73,108 +161,18 @@ defects:
     detection_zone: "blade_body"
     process_parameters: ["tempering_temp", "cooling_rate", "cleaning_concentration"]
 
-  dent:
-    description_zh: "凹痕"
-    description_en: "Surface dent or depression"
+  overgrind:
+    description_zh: "过磨/尺寸偏差"
+    description_en: "Over-grind or dimensional error"
     common_causes:
-      - "Impact during handling or transport"
-      - "Press alignment drift"
-      - "Fixture damage"
-    severity_range: [0.3, 0.9]
-    sop_section: "SOP 3.2.4"
-    detection_zone: "blade_body"
-    process_parameters: ["press_alignment", "fixture_condition", "handling_method"]
-
-  crack:
-    description_zh: "裂纹"
-    description_en: "Surface or edge crack"
-    common_causes:
-      - "Material stress from heat treatment"
-      - "Quenching too rapid"
-      - "Material inclusion defect"
-      - "Grinding thermal damage"
-    severity_range: [0.7, 1.0]
-    sop_section: "SOP 2.1.1"
-    detection_zone: "any"
-    process_parameters: ["quench_rate", "tempering_temp", "grinding_rpm"]
-
-  warp:
-    description_zh: "翘曲变形"
-    description_en: "Blade warping or bending"
-    common_causes:
-      - "Uneven heat treatment"
-      - "Asymmetric grinding pressure"
-      - "Residual stress from stamping"
-      - "Improper stacking during cooling"
-    severity_range: [0.4, 1.0]
-    sop_section: "SOP 3.1.2"
-    detection_zone: "full_blade"
-    process_parameters: ["tempering_temp", "grinding_pressure", "cooling_method"]
-
-  handle_gap:
-    description_zh: "刀柄间隙"
-    description_en: "Gap between handle and blade tang"
-    common_causes:
-      - "Handle molding tolerance drift"
-      - "Rivet tension insufficient"
-      - "Adhesive cure time too short"
-      - "Tang dimension out of spec"
-    severity_range: [0.3, 0.8]
-    sop_section: "SOP 6.1.3"
-    detection_zone: "handle_junction"
-    process_parameters: ["mold_temp", "rivet_torque", "cure_time"]
-
-  handle_crack:
-    description_zh: "刀柄裂纹"
-    description_en: "Crack or split in handle material"
-    common_causes:
-      - "Injection molding temperature too high"
-      - "Material drying insufficient"
-      - "Rivet over-torque"
-      - "Drop damage"
-    severity_range: [0.5, 1.0]
-    sop_section: "SOP 6.2.1"
-    detection_zone: "handle_body"
-    process_parameters: ["mold_temp", "material_moisture", "rivet_torque"]
-
-  logo_defect:
-    description_zh: "商标印刷缺陷"
-    description_en: "Logo print misalignment, smearing, or missing"
-    common_causes:
-      - "Laser marking alignment drift"
-      - "Etching depth inconsistency"
-      - "Surface preparation insufficient"
-      - "Fixture positioning error"
-    severity_range: [0.2, 0.6]
-    sop_section: "SOP 7.1.1"
-    detection_zone: "blade_flat"
-    process_parameters: ["laser_power", "marking_speed", "focus_distance"]
-
-  dimension_out_of_spec:
-    description_zh: "尺寸超差"
-    description_en: "Blade length, width, or thickness out of tolerance"
-    common_causes:
-      - "Stamping die wear"
       - "Grinding wheel diameter decrease"
+      - "Asymmetric grinding pressure"
       - "CNC program drift"
       - "Measurement fixture calibration"
     severity_range: [0.4, 1.0]
-    sop_section: "SOP 2.3.1"
+    sop_section: "SOP 4.6.5"
     detection_zone: "full_blade"
-    process_parameters: ["die_cycles", "grinding_wheel_diameter", "cnc_offset"]
-
-  foreign_material:
-    description_zh: "异物附着"
-    description_en: "Foreign material contamination on surface"
-    common_causes:
-      - "Cleaning process failure"
-      - "Environmental contamination"
-      - "Previous process residue"
-      - "Packaging material debris"
-    severity_range: [0.2, 0.7]
-    sop_section: "SOP 5.3.1"
-    detection_zone: "any"
-    process_parameters: ["cleaning_concentration", "rinse_cycles", "air_quality"]
+    process_parameters: ["grinding_wheel_diameter", "grinding_pressure", "cnc_offset"]
 
 
 # SOP Section Reference (for Action Recommender Layer 4)
@@ -186,6 +184,8 @@ sop_sections:
   "SOP 3.4.2": "Deburring & Edge Finishing"
   "SOP 4.2.3": "Grinding Wheel Maintenance & Calibration"
   "SOP 4.3.1": "Sharpening & Edge Finishing QC"
+  "SOP 4.6.2": "Weld Seam Inspection"
+  "SOP 4.6.5": "Dimensional Grinding Control"
   "SOP 5.1.1": "Corrosion Prevention & Passivation"
   "SOP 5.2.1": "Heat Treatment Process Control"
   "SOP 5.3.1": "Cleaning & Contamination Control"
