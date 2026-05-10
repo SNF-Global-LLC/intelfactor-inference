@@ -533,7 +533,13 @@
       const created = document.createElement('li');
       created.textContent = `${fmtTime(row.timestamp)} | inspection recorded`;
       trail.appendChild(created);
-      if (row.accepted !== null && row.accepted !== undefined) {
+      if (Array.isArray(row.operator_actions) && row.operator_actions.length) {
+        row.operator_actions.forEach(operatorAction => {
+          const actionItem = document.createElement('li');
+          actionItem.textContent = `${fmtTime(operatorAction.timestamp)} | ${operatorAction.action} | ${operatorAction.operator_id || 'operator'}`;
+          trail.appendChild(actionItem);
+        });
+      } else if (row.accepted !== null && row.accepted !== undefined) {
         const actionItem = document.createElement('li');
         actionItem.textContent = `${fmtTime(row.timestamp)} | ${action} | ${row.operator_id || 'operator'}`;
         trail.appendChild(actionItem);

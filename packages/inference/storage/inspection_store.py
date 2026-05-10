@@ -15,6 +15,7 @@ import json
 import logging
 import sqlite3
 import threading
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -66,6 +67,23 @@ CREATE INDEX IF NOT EXISTS idx_insp_station ON inspections(station_id);
 CREATE INDEX IF NOT EXISTS idx_insp_workspace ON inspections(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_insp_sync ON inspections(sync_status);
 CREATE INDEX IF NOT EXISTS idx_insp_decision ON inspections(decision);
+
+CREATE TABLE IF NOT EXISTS operator_actions (
+    action_id TEXT PRIMARY KEY,
+    inspection_id TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    station_id TEXT DEFAULT '',
+    workspace_id TEXT DEFAULT '',
+    operator_id TEXT DEFAULT '',
+    action TEXT NOT NULL,
+    reason TEXT DEFAULT '',
+    notes TEXT DEFAULT '',
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (inspection_id) REFERENCES inspections(inspection_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_operator_actions_inspection ON operator_actions(inspection_id);
+CREATE INDEX IF NOT EXISTS idx_operator_actions_timestamp ON operator_actions(timestamp DESC);
 """
 
 
@@ -255,6 +273,7 @@ class InspectionStore:
         inspection_id: str,
         accepted: bool,
         operator_id: str = "",
+        action: str | None = None,
         reason: str = "",
         notes: str = "",
     ) -> bool:
@@ -273,8 +292,49 @@ class InspectionStore:
                 operator_id, operator_id,
                 inspection_id,
             ))
+            if cur.rowcount <= 0:
+                conn.commit()
+                return False
+
+            row = conn.execute(
+                "SELECT station_id, workspace_id FROM inspections WHERE inspection_id = ?",
+                (inspection_id,),
+            ).fetchone()
+            action_name = action or ("confirm_defect" if accepted else "override_to_pass")
+            now = datetime.now(tz=timezone.utc).isoformat()
+            conn.execute("""
+                INSERT INTO operator_actions (
+                    action_id, inspection_id, timestamp, station_id, workspace_id,
+                    operator_id, action, reason, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                f"act_{uuid.uuid4().hex}",
+                inspection_id,
+                now,
+                row["station_id"] if row else "",
+                row["workspace_id"] if row else "",
+                operator_id,
+                action_name,
+                reason,
+                notes,
+            ))
             conn.commit()
-            return cur.rowcount > 0
+            return True
+
+    def list_operator_actions(self, inspection_id: str) -> list[dict[str, Any]]:
+        """Return the local operator action trail for one inspection."""
+        conn = self._get_conn()
+        rows = conn.execute(
+            """
+            SELECT action_id, inspection_id, timestamp, station_id, workspace_id,
+                   operator_id, action, reason, notes
+            FROM operator_actions
+            WHERE inspection_id = ?
+            ORDER BY timestamp ASC
+            """,
+            (inspection_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
 
     def get_stats(self, workspace_id: str | None = None) -> dict[str, Any]:
         """Get inspection store statistics."""

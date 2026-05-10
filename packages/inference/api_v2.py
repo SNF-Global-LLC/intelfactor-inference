@@ -681,6 +681,7 @@ def create_app(
             inspection_id,
             accepted=accepted,
             operator_id=operator_id,
+            action=action,
             reason=reason,
             notes=notes,
         )
@@ -734,7 +735,12 @@ def create_app(
         if (err := _require_event_workspace(event)) is not None:
             return err
 
-        return jsonify(_inspection_to_dict(event))
+        return jsonify(
+            _inspection_to_dict(
+                event,
+                operator_actions=store.list_operator_actions(inspection_id),
+            )
+        )
 
     @app.route("/api/inspections/stats", methods=["GET"])
     def inspection_stats():
@@ -757,7 +763,9 @@ def create_app(
     return app
 
 
-def _inspection_to_dict(event: Any) -> dict[str, Any]:
+def _inspection_to_dict(
+    event: Any, operator_actions: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
     """Convert an InspectionEvent to a JSON-serializable dict."""
     detections = []
     for d in event.detections or []:
@@ -806,6 +814,7 @@ def _inspection_to_dict(event: Any) -> dict[str, Any]:
         "accepted": event.accepted,
         "rejection_reason": event.rejection_reason,
         "notes": event.notes,
+        "operator_actions": operator_actions or [],
         "sync_status": event.sync_status.value
         if hasattr(event.sync_status, "value")
         else event.sync_status,

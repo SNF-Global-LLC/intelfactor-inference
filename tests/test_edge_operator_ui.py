@@ -85,6 +85,10 @@ def test_inspection_feedback_supports_operator_action_names(monkeypatch, tmp_pat
     )
     assert response.status_code == 200
     assert store.get("insp_actions_001").accepted is True
+    actions = store.list_operator_actions("insp_actions_001")
+    assert len(actions) == 1
+    assert actions[0]["action"] == "confirm_defect"
+    assert actions[0]["operator_id"] == "op_1"
 
     response = client.post(
         "/api/inspect/insp_actions_001/feedback",
@@ -95,6 +99,38 @@ def test_inspection_feedback_supports_operator_action_names(monkeypatch, tmp_pat
     event = store.get("insp_actions_001")
     assert event.accepted is False
     assert event.rejection_reason == "override_to_pass"
+    actions = store.list_operator_actions("insp_actions_001")
+    assert [row["action"] for row in actions] == ["confirm_defect", "override_to_pass"]
+
+    response = client.get("/api/inspections/insp_actions_001", headers=AUTH_HEADERS)
+    assert response.status_code == 200
+    data = response.get_json()
+    assert [row["action"] for row in data["operator_actions"]] == [
+        "confirm_defect",
+        "override_to_pass",
+    ]
+
+
+def test_inspect_page_does_not_store_inspections_or_actions_in_browser(monkeypatch, tmp_path):
+    monkeypatch.setenv("STORAGE_MODE", "local")
+    monkeypatch.setenv("SQLITE_DB_PATH", str(tmp_path / "test.db"))
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "test.db"))
+    monkeypatch.setenv("EVIDENCE_DIR", str(tmp_path / "evidence"))
+    monkeypatch.setenv("STATION_API_KEY", "test-secret-key")
+    (tmp_path / "evidence").mkdir()
+    _reset_storage_singletons()
+
+    from packages.inference.api_v2 import create_app
+
+    app = create_app(runtime=None)
+    app.config["TESTING"] = True
+
+    html = app.test_client().get("/inspect").get_data(as_text=True)
+
+    assert "localStorage.setItem('edgeApiKey'" in html
+    assert "localStorage.setItem('inspections'" not in html
+    assert "localStorage.setItem('operator_actions'" not in html
+    assert "localStorage.setItem('operatorActions'" not in html
 
 
 def test_seed_operator_console_creates_local_rows_and_evidence(tmp_path):
