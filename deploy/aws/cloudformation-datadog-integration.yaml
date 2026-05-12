@@ -1,0 +1,235 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Datadog AWS Integration for IntelFactor.
+  Creates an IAM role that allows Datadog's AWS account to collect
+  CloudWatch metrics, events, and resource metadata.
+  See: https://docs.datadoghq.com/getting_started/integrations/aws/
+
+Parameters:
+  DatadogAwsAccountId:
+    Type: String
+    Default: "464622532012"
+    Description: Datadog's AWS account ID (default for commercial regions)
+  ExternalId:
+    Type: String
+    NoEcho: true
+    Description: >
+      External ID from the Datadog AWS integration page.
+      Generate this in Datadog before deploying this stack.
+  DdApiKey:
+    Type: String
+    NoEcho: true
+    Description: Datadog API key (used for integration registration if needed)
+  DdAppKey:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: Datadog APP key (optional - for automated API registration)
+  DdSite:
+    Type: String
+    Default: datadoghq.com
+    AllowedValues:
+      - datadoghq.com
+      - datadoghq.eu
+      - us3.datadoghq.com
+      - us5.datadoghq.com
+      - ap1.datadoghq.com
+      - ap2.datadoghq.com
+      - ddog-gov.com
+    Description: Datadog site
+  EnableCloudSecurity:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: Enable Cloud Security Misconfigurations (CSPM)
+  EnableCloudCost:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: Enable Cloud Cost Management (requires CUR export)
+
+Conditions:
+  HasAppKey: !Not [!Equals [!Ref DdAppKey, ""]]
+  EnableCspm: !Equals [!Ref EnableCloudSecurity, "true"]
+
+Resources:
+  # ── Datadog Integration IAM Role ───────────────────────────────────────
+  DatadogIntegrationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: IntelFactorDatadogIntegrationRole
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${DatadogAwsAccountId}:root"
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: !Ref ExternalId
+      Tags:
+        - Key: Project
+          Value: IntelFactor
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # ── Core Integration Policy ────────────────────────────────────────────
+  DatadogCorePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: IntelFactorDatadogCorePolicy
+      Roles:
+        - !Ref DatadogIntegrationRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: CloudWatchMetrics
+            Effect: Allow
+            Action:
+              - cloudwatch:ListMetrics
+              - cloudwatch:GetMetricData
+              - cloudwatch:GetMetricStatistics
+              - cloudwatch:Describe*
+            Resource: "*"
+          - Sid: EC2
+            Effect: Allow
+            Action:
+              - ec2:Describe*
+            Resource: "*"
+          - Sid: ECS
+            Effect: Allow
+            Action:
+              - ecs:Describe*
+              - ecs:List*
+            Resource: "*"
+          - Sid: ELB
+            Effect: Allow
+            Action:
+              - elasticloadbalancing:Describe*
+            Resource: "*"
+          - Sid: AutoScaling
+            Effect: Allow
+            Action:
+              - autoscaling:Describe*
+            Resource: "*"
+          - Sid: RDS
+            Effect: Allow
+            Action:
+              - rds:Describe*
+              - rds:List*
+            Resource: "*"
+          - Sid: S3ReadOnly
+            Effect: Allow
+            Action:
+              - s3:GetBucketLocation
+              - s3:GetBucketLogging
+              - s3:GetBucketTagging
+              - s3:GetObject
+              - s3:ListAllMyBuckets
+              - s3:ListBucket
+            Resource: "*"
+          - Sid: Lambda
+            Effect: Allow
+            Action:
+              - lambda:GetPolicy
+              - lambda:List*
+            Resource: "*"
+          - Sid: SNS
+            Effect: Allow
+            Action:
+              - sns:GetTopicAttributes
+              - sns:List*
+              - sns:Publish
+            Resource: "*"
+          - Sid: SQS
+            Effect: Allow
+            Action:
+              - sqs:GetQueueAttributes
+              - sqs:ListQueues
+            Resource: "*"
+          - Sid: CloudTrail
+            Effect: Allow
+            Action:
+              - cloudtrail:DescribeTrails
+              - cloudtrail:GetTrailStatus
+              - cloudtrail:LookupEvents
+            Resource: "*"
+          - Sid: Tagging
+            Effect: Allow
+            Action:
+              - tag:GetResources
+              - tag:GetTagKeys
+              - tag:GetTagValues
+            Resource: "*"
+          - Sid: Health
+            Effect: Allow
+            Action:
+              - health:DescribeEvents
+              - health:DescribeEventDetails
+              - health:DescribeAffectedEntities
+            Resource: "*"
+          - Sid: XRay
+            Effect: Allow
+            Action:
+              - xray:BatchGetTraces
+              - xray:GetTraceSummaries
+            Resource: "*"
+
+  # ── Cloud Security Misconfigurations (CSPM) Policy ─────────────────────
+  DatadogCspmPolicy:
+    Type: AWS::IAM::Policy
+    Condition: EnableCspm
+    Properties:
+      PolicyName: IntelFactorDatadogCSPMPolicy
+      Roles:
+        - !Ref DatadogIntegrationRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: SecurityAudit
+            Effect: Allow
+            Action:
+              - securityhub:GetFindings
+              - config:Get*
+              - config:Describe*
+              - config:List*
+              - iam:GenerateCredentialReport
+              - iam:GenerateServiceLastAccessedDetails
+              - iam:Get*
+              - iam:List*
+              - iam:SimulateCustomPolicy
+              - iam:SimulatePrincipalPolicy
+              - kms:GetKeyRotationStatus
+              - kms:ListKeys
+              - kms:ListResourceTags
+              - kms:ListAliases
+              - s3:GetAccountPublicAccessBlock
+              - s3:GetBucketAcl
+              - s3:GetBucketPolicy
+              - s3:GetBucketPolicyStatus
+              - s3:GetBucketPublicAccessBlock
+              - s3:GetBucketVersioning
+              - s3:GetEncryptionConfiguration
+              - s3:ListAllMyBuckets
+            Resource: "*"
+
+Outputs:
+  IntegrationRoleArn:
+    Description: ARN of the IAM role for Datadog AWS integration
+    Value: !GetAtt DatadogIntegrationRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-IntegrationRoleArn"
+  IntegrationRoleName:
+    Description: Name of the IAM role for Datadog AWS integration
+    Value: !Ref DatadogIntegrationRole
+    Export:
+      Name: !Sub "${AWS::StackName}-IntegrationRoleName"
+  ExternalId:
+    Description: External ID used for the integration
+    Value: !Ref ExternalId

@@ -1,0 +1,78 @@
+{
+  "family": "intelfactor-datadog-agent",
+  "taskRoleArn": "arn:aws:iam::<AWS_ACCOUNT_ID>:role/IntelFactorECSAgentTaskRole",
+  "executionRoleArn": "arn:aws:iam::<AWS_ACCOUNT_ID>:role/IntelFactorECSAgentExecutionRole",
+  "networkMode": "bridge",
+  "requiresCompatibilities": ["EC2"],
+  "containerDefinitions": [
+    {
+      "name": "datadog-agent",
+      "image": "public.ecr.aws/datadog/agent:latest",
+      "cpu": 100,
+      "memory": 512,
+      "essential": true,
+      "mountPoints": [
+        {
+          "containerPath": "/var/run/docker.sock",
+          "sourceVolume": "docker_sock",
+          "readOnly": true
+        },
+        {
+          "containerPath": "/host/sys/fs/cgroup",
+          "sourceVolume": "cgroup",
+          "readOnly": true
+        },
+        {
+          "containerPath": "/host/proc",
+          "sourceVolume": "proc",
+          "readOnly": true
+        }
+      ],
+      "environment": [
+        {
+          "name": "DD_API_KEY",
+          "value": "<YOUR_DATADOG_API_KEY>"
+        },
+        {
+          "name": "DD_SITE",
+          "value": "datadoghq.com"
+        },
+        {
+          "name": "DD_ECS_TASK_COLLECTION_ENABLED",
+          "value": "true"
+        },
+        {
+          "name": "DD_TAGS",
+          "value": "env:production,project:intelfactor,service:datadog-agent"
+        }
+      ],
+      "healthCheck": {
+        "retries": 3,
+        "command": ["CMD-SHELL", "agent health"],
+        "timeout": 5,
+        "interval": 30,
+        "startPeriod": 15
+      }
+    }
+  ],
+  "volumes": [
+    {
+      "host": {
+        "sourcePath": "/var/run/docker.sock"
+      },
+      "name": "docker_sock"
+    },
+    {
+      "host": {
+        "sourcePath": "/proc/"
+      },
+      "name": "proc"
+    },
+    {
+      "host": {
+        "sourcePath": "/sys/fs/cgroup/"
+      },
+      "name": "cgroup"
+    }
+  ]
+}

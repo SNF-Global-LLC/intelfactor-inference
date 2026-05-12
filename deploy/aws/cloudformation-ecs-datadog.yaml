@@ -1,0 +1,175 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  IntelFactor Datadog Agent deployment for Amazon ECS (EC2).
+  Deploys the Datadog Agent as a daemon service with ECS Explorer,
+  APM, Log Management, and DogStatsD enabled.
+
+Parameters:
+  ClusterName:
+    Type: String
+    Description: Name of the existing ECS cluster
+    Default: intelfactor-cluster
+  DatadogApiKey:
+    Type: String
+    Description: Datadog API Key
+    NoEcho: true
+  DatadogSite:
+    Type: String
+    Description: Datadog site (e.g. datadoghq.com, datadoghq.eu, ddog-gov.com)
+    Default: datadoghq.com
+  Environment:
+    Type: String
+    Description: Environment tag
+    Default: production
+
+Resources:
+  # ── IAM Role for Datadog Agent Task ────────────────────────────────────
+  DatadogAgentTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ClusterName}-datadog-agent-task-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: DatadogAgentPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecs:ListClusters
+                  - ecs:ListContainerInstances
+                  - ecs:DescribeContainerInstances
+                  - ecs:DescribeTasks
+                  - ecs:ListTasks
+                  - ecs:DescribeTaskDefinition
+                  - ec2:DescribeInstances
+                Resource: "*"
+
+  DatadogAgentExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ClusterName}-datadog-agent-execution-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  # ── ECS Task Definition for Datadog Agent ──────────────────────────────
+  DatadogAgentTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${ClusterName}-datadog-agent"
+      NetworkMode: bridge
+      RequiresCompatibilities:
+        - EC2
+      TaskRoleArn: !GetAtt DatadogAgentTaskRole.Arn
+      ExecutionRoleArn: !GetAtt DatadogAgentExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: datadog-agent
+          Image: public.ecr.aws/datadog/agent:latest
+          Cpu: 200
+          Memory: 1024
+          Essential: true
+          MountPoints:
+            - ContainerPath: /var/run/docker.sock
+              SourceVolume: docker_sock
+              ReadOnly: true
+            - ContainerPath: /host/sys/fs/cgroup
+              SourceVolume: cgroup
+              ReadOnly: true
+            - ContainerPath: /host/proc
+              SourceVolume: proc
+              ReadOnly: true
+            - ContainerPath: /var/run/datadog
+              SourceVolume: dd_sockets
+              ReadOnly: false
+            - ContainerPath: /opt/datadog-agent/run
+              SourceVolume: pointdir
+              ReadOnly: false
+            - ContainerPath: /var/lib/docker/containers
+              SourceVolume: containers_root
+              ReadOnly: true
+          PortMappings:
+            - HostPort: 8125
+              Protocol: udp
+              ContainerPort: 8125
+            - HostPort: 8126
+              Protocol: tcp
+              ContainerPort: 8126
+          Environment:
+            - Name: DD_API_KEY
+              Value: !Ref DatadogApiKey
+            - Name: DD_SITE
+              Value: !Ref DatadogSite
+            - Name: DD_ECS_TASK_COLLECTION_ENABLED
+              Value: "true"
+            - Name: DD_APM_ENABLED
+              Value: "true"
+            - Name: DD_DOGSTATSD_NON_LOCAL_TRAFFIC
+              Value: "true"
+            - Name: DD_LOGS_ENABLED
+              Value: "true"
+            - Name: DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL
+              Value: "true"
+            - Name: DD_PROCESS_AGENT_ENABLED
+              Value: "true"
+            - Name: DD_TAGS
+              Value: !Sub "env:${Environment},project:intelfactor,service:datadog-agent"
+          HealthCheck:
+            Retries: 3
+            Command:
+              - CMD-SHELL
+              - agent health
+            Timeout: 5
+            Interval: 30
+            StartPeriod: 15
+      Volumes:
+        - Name: docker_sock
+          Host:
+            SourcePath: /var/run/docker.sock
+        - Name: proc
+          Host:
+            SourcePath: /proc/
+        - Name: cgroup
+          Host:
+            SourcePath: /sys/fs/cgroup/
+        - Name: dd_sockets
+          Host:
+            SourcePath: /var/run/datadog
+        - Name: pointdir
+          Host:
+            SourcePath: /opt/datadog-agent/run
+        - Name: containers_root
+          Host:
+            SourcePath: /var/lib/docker/containers/
+
+  # ── ECS Daemon Service ─────────────────────────────────────────────────
+  DatadogAgentDaemonService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: !Sub "${ClusterName}-datadog-agent"
+      Cluster: !Ref ClusterName
+      TaskDefinition: !Ref DatadogAgentTaskDefinition
+      SchedulingStrategy: DAEMON
+      DeploymentConfiguration:
+        MaximumPercent: 100
+        MinimumHealthyPercent: 0
+
+Outputs:
+  TaskDefinitionArn:
+    Description: ARN of the Datadog Agent task definition
+    Value: !Ref DatadogAgentTaskDefinition
+  TaskRoleArn:
+    Description: IAM role ARN for the Datadog Agent task
+    Value: !GetAtt DatadogAgentTaskRole.Arn

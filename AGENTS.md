@@ -77,6 +77,7 @@ deploy/
 ├── edge-only/                 # Single-device deployment (Docker)
 ├── hybrid/                    # Edge + cloud sync sidecar
 ├── hub/                       # Site hub: Postgres + MinIO + Prometheus + Grafana
+├── aws/                       # AWS ECS + Datadog Agent task definitions
 ├── station/                   # Bare-metal setup scripts
 └── systemd/                   # systemd service unit
 
@@ -208,13 +209,32 @@ The script is idempotent. It writes placeholder evidence files under `data/evide
 
 ## Deployment Architecture
 
-Three deployment modes are supported:
+Four deployment modes are supported:
 
 | Mode | Description | Cloud Dependency |
 |------|-------------|------------------|
 | **Edge-Only** | Everything on a single Jetson/GPU box. SQLite + local filesystem. | None |
 | **Hybrid** | Edge runs locally; a sidecar sync agent pushes to cloud API via HTTPS. | Optional (outbound only) |
 | **Hub** | On-premises site data zone: Postgres + MinIO + Prometheus + Grafana. | None |
+| **AWS ECS + Datadog** | Cloud-native container deployment with Datadog observability (ECS Explorer, APM, Logs). | Datadog |
+
+### Datadog on AWS
+
+See `deploy/aws/` for the complete Datadog AWS stack:
+
+1. **AWS Integration** (`cloudformation-datadog-integration.yaml`) — IAM role allowing Datadog to pull CloudWatch metrics, events, and resource metadata from your AWS account.
+2. **Datadog Forwarder** (`cloudformation-datadog-forwarder.yaml`) — Lambda function that forwards CloudWatch Logs, S3 events, and SNS messages to Datadog.
+3. **ECS Agent** (`cloudformation-ecs-datadog.yaml`) — Datadog Agent deployed as an ECS daemon service with ECS Explorer enabled (`DD_ECS_TASK_COLLECTION_ENABLED`).
+
+Local Docker Compose files also include an optional `datadog-agent` sidecar for dev parity.
+
+Quick deploy:
+```bash
+cd deploy/aws
+export DD_API_KEY="..."
+export DD_EXTERNAL_ID="..."
+./setup-datadog-aws.sh
+```
 
 ### Environment Variables (Critical for Dev)
 
@@ -233,6 +253,8 @@ Three deployment modes are supported:
 | `EVIDENCE_MAX_GB` | FIFO disk quota (default 50) | |
 | `CLOUD_API_URL` | Cloud API base URL | Only for hybrid sync |
 | `CLOUD_API_KEY` | Cloud API bearer token | Only for hybrid sync |
+| `DD_API_KEY` | Datadog API key | Only when using Datadog Agent |
+| `DD_SITE` | Datadog site (`datadoghq.com`, `datadoghq.eu`) | Defaults to `datadoghq.com` |
 
 ### No External Services Needed for Dev/Test
 
@@ -290,5 +312,6 @@ All storage is SQLite (stdlib). No MQTT broker, Docker, Postgres, MinIO, GPU, or
 | `docs/BACKEND_IMPLEMENTATION_GUIDE.md` | Cloud backend implementation reference |
 | `docs/JETSON_OPERATOR_CONSOLE_VALIDATION.md` | Hardware validation checklist for `/inspect` |
 | `docs/DEPLOYMENT_GUIDE.md` | Bilingual CN/EN deployment instructions |
+| `deploy/aws/README.md` | Datadog Agent on ECS setup guide |
 | `README.md` | Human-facing quick start |
 | `CLAUDE.md` | Full architecture reference (comprehensive) |

@@ -1,0 +1,200 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Datadog Forwarder Lambda for IntelFactor AWS environment.
+  Forwards CloudWatch Logs, S3 events, and SNS messages to Datadog.
+  Based on: https://docs.datadoghq.com/logs/guide/forwarder/
+
+Parameters:
+  DdApiKey:
+    Type: String
+    NoEcho: true
+    Description: Datadog API key
+  DdApiKeySecretArn:
+    Type: String
+    Default: ""
+    Description: ARN of AWS Secrets Manager secret containing Datadog API key (alternative to DdApiKey)
+  DdSite:
+    Type: String
+    Default: datadoghq.com
+    AllowedValues:
+      - datadoghq.com
+      - datadoghq.eu
+      - us3.datadoghq.com
+      - us5.datadoghq.com
+      - ap1.datadoghq.com
+      - ap2.datadoghq.com
+      - ddog-gov.com
+    Description: Datadog site to send data to
+  DdTags:
+    Type: String
+    Default: "env:production,project:intelfactor"
+    Description: Comma-separated list of tags to apply to all data sent by the Forwarder
+  FunctionName:
+    Type: String
+    Default: intelfactor-datadog-forwarder
+    Description: Name for the Forwarder Lambda function
+  MemorySize:
+    Type: Number
+    Default: 1024
+    Description: Lambda memory size in MB
+  Timeout:
+    Type: Number
+    Default: 120
+    Description: Lambda timeout in seconds
+
+Conditions:
+  UseSecretArn: !Not [!Equals [!Ref DdApiKeySecretArn, ""]]
+  UsePlaintextKey: !Equals [!Ref DdApiKeySecretArn, ""]
+
+Resources:
+  # ── S3 Bucket for Forwarder code ───────────────────────────────────────
+  ForwarderBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "intelfactor-datadog-forwarder-${AWS::AccountId}-${AWS::Region}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 7
+
+  # ── Secrets Manager (only if plaintext key provided) ───────────────────
+  DatadogApiKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Condition: UsePlaintextKey
+    Properties:
+      Name: !Sub "intelfactor/datadog-api-key-${AWS::StackName}"
+      Description: Datadog API key for IntelFactor Forwarder
+      SecretString: !Ref DdApiKey
+
+  # ── IAM Role for Forwarder Lambda ──────────────────────────────────────
+  ForwarderRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${FunctionName}-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ForwarderPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ReadS3Objects
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: "arn:aws:s3:::*"
+              - Sid: GetSecret
+                Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !If [UseSecretArn, !Ref DdApiKeySecretArn, !Ref DatadogApiKeySecret]
+              - Sid: KMSDecrypt
+                Effect: Allow
+                Action:
+                  - kms:Decrypt
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub "secretsmanager.${AWS::Region}.amazonaws.com"
+              - Sid: WriteLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                  - logs:PutSubscriptionFilter
+                  - logs:DeleteSubscriptionFilter
+                  - logs:DescribeSubscriptionFilters
+                Resource: "*"
+              - Sid: ListTags
+                Effect: Allow
+                Action:
+                  - logs:ListTagsForResource
+                  - logs:ListTagsLogGroup
+                Resource: "*"
+              - Sid: FetchLambdaTags
+                Effect: Allow
+                Action:
+                  - lambda:ListTags
+                  - lambda:ListFunctions
+                Resource: "*"
+
+  # ── Forwarder Lambda Function ──────────────────────────────────────────
+  ForwarderFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Ref FunctionName
+      Description: Datadog Forwarder for IntelFactor
+      Role: !GetAtt ForwarderRole.Arn
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.11
+      MemorySize: !Ref MemorySize
+      Timeout: !Ref Timeout
+      Architectures:
+        - arm64
+      Environment:
+        Variables:
+          DD_API_KEY_SECRET_ARN:
+            !If [UseSecretArn, !Ref DdApiKeySecretArn, !Ref DatadogApiKeySecret]
+          DD_SITE: !Ref DdSite
+          DD_TAGS: !Ref DdTags
+          DD_FETCH_LAMBDA_TAGS: "true"
+          DD_FETCH_LOG_GROUP_TAGS: "true"
+      Code:
+        ZipFile: |
+          # Placeholder - the real code is loaded from the Datadog Lambda layer.
+          # This minimal function ensures CloudFormation doesn't fail before
+          # the layer is attached. In practice, deploy the official Datadog
+          # Forwarder from the AWS Serverless Application Repository or use
+          # the Datadog-provided CloudFormation template directly.
+          def lambda_handler(event, context):
+              import json
+              print(json.dumps({"message": "Forwarder placeholder", "event": event}))
+              return {"statusCode": 200}
+      Layers:
+        - !Sub "arn:aws:lambda:${AWS::Region}:464622532012:layer:Datadog-Forwarder:latest"
+      ReservedConcurrentExecutions: 100
+
+  # ── CloudWatch Log Group for Forwarder ─────────────────────────────────
+  ForwarderLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${FunctionName}"
+      RetentionInDays: 14
+
+Outputs:
+  ForwarderArn:
+    Description: ARN of the Datadog Forwarder Lambda function
+    Value: !GetAtt ForwarderFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-ForwarderArn"
+  ForwarderRoleArn:
+    Description: IAM role ARN for the Forwarder
+    Value: !GetAtt ForwarderRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-ForwarderRoleArn"
+  ApiKeySecretArn:
+    Description: ARN of the secret storing the Datadog API key
+    Value: !If [UseSecretArn, !Ref DdApiKeySecretArn, !Ref DatadogApiKeySecret]
+    Export:
+      Name: !Sub "${AWS::StackName}-ApiKeySecretArn"
