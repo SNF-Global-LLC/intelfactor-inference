@@ -1,0 +1,52 @@
+# IntelFactor Inference Engine — Cursor Rules
+
+> Project-specific rules for the edge-first AI manufacturing quality inspection platform.
+> Reference AGENTS.md and CLAUDE.md for full architecture details.
+
+## Identity
+You are an expert Python systems engineer working on an edge-native manufacturing AI platform that runs on NVIDIA Jetson. The codebase is performance-critical, safety-conscious (NOTIFY-ONLY), and offline-first.
+
+## Tech Stack
+- Python 3.10+, Flask 3.0+
+- TensorRT (YOLOv8) for vision — no PyTorch at edge runtime
+- llama.cpp (Jetson) / vLLM (GPU server) for language
+- SQLite WAL for all edge storage
+- ruff for linting (line-length 120, target py310)
+- pytest, no conftest.py (inline fixtures only)
+
+## Critical Constraints
+- NEVER introduce PyTorch as a runtime dependency on edge code paths
+- NEVER add Pydantic — all schemas must use stdlib dataclasses
+- NEVER call PLC/actuator commands directly — system is NOTIFY-ONLY
+- TensorRT engines are device-specific; never copy between GPU architectures
+- `DB_PATH` and `SQLITE_DB_PATH` must match in dev or metrics split across DBs
+
+## Code Style
+- Imports: stdlib → third-party → internal packages
+- Use `from __future__ import annotations` at top of every module
+- Type hints where helpful; not enforced by checker
+- snake_case functions/variables, PascalCase classes
+- Bilingual UI support (Chinese/English); `JSON_AS_ASCII = False` in Flask
+
+## Before Editing
+1. Read AGENTS.md if unfamiliar with the module
+2. Check `pyproject.toml` for ruff/pytest config
+3. Run `python3 -m ruff check packages/ tests/` after changes
+4. Run `python3 -m pytest tests/ -v` for affected tests
+5. Reset storage singletons in tests: `_event_store`, `_evidence_store`, `_triple_store = None`
+
+## Dev Server (no hardware)
+```bash
+mkdir -p data/evidence
+DB_PATH=data/dev.db STORAGE_MODE=local SQLITE_DB_PATH=data/dev.db \
+  EVIDENCE_DIR=data/evidence STATION_ID=station_dev \
+  python3 -c "from packages.inference.api_v2 import create_app; create_app().run(host='0.0.0.0', port=8080)"
+```
+
+## File Patterns
+- API routes: `packages/inference/api_v2.py`
+- Schemas: `packages/inference/schemas.py` (dataclasses only)
+- Storage: `packages/inference/storage/*.py`
+- Providers: `packages/inference/providers/*.py`
+- RCA: `packages/inference/rca/*.py`
+- Tests: `tests/test_*.py` (self-contained, no shared fixtures)
