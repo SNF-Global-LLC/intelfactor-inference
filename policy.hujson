@@ -1,0 +1,31 @@
+// Tailscale ACL policy for IntelFactor falcon-caiman.ts.net
+// Grants access to tag:jetson edge devices.
+
+{
+	"tagOwners": {
+		"tag:jetson": ["autogroup:admin"]
+	},
+
+	"acls": [
+		// All tailnet members can SSH and reach the station API on jetson-tagged nodes
+		{
+			"action": "accept",
+			"src":    ["autogroup:member"],
+			"dst":    ["tag:jetson:22", "tag:jetson:8090"]
+		},
+
+		// Jetson nodes can reach the internet (apt, cloud sync, TRT downloads)
+		{
+			"action": "accept",
+			"src":    ["tag:jetson"],
+			"dst":    ["autogroup:internet:*"]
+		},
+
+		// Jetson nodes can talk to other tailnet members (hub, AWS relay)
+		{
+			"action": "accept",
+			"src":    ["tag:jetson"],
+			"dst":    ["autogroup:member:*"]
+		}
+	]
+}
