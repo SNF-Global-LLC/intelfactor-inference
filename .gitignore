@@ -15,6 +15,9 @@ venv/
 .cursor/
 .vscode/
 .idea/
+
+# Codacy (local CLI / MCP cache — do not commit)
+.codacy/
 *.swp
 *.swo
 
