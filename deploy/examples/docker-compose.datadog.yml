@@ -1,0 +1,36 @@
+# IntelFactor — Optional Datadog Agent Sidecar
+# Usage: docker compose -f docker-compose.yml -f docker-compose.datadog.yml up -d
+#
+# This file adds a Datadog Agent container to any existing IntelFactor
+# docker-compose deployment (edge-only, hybrid, or hub).
+#
+# Prerequisites:
+#   - Set DD_API_KEY and optionally DD_SITE in your .env file
+#   - Ensure /var/run/datadog exists on the host for APM UDS
+#
+# For AWS ECS deployments, use the task definitions in deploy/aws/ instead.
+
+services:
+  datadog-agent:
+    image: gcr.io/datadoghq/agent:latest
+    container_name: intelfactor-datadog-agent
+    restart: unless-stopped
+    pid: host
+    environment:
+      DD_API_KEY: ${DD_API_KEY:?Set DD_API_KEY in .env}
+      DD_SITE: ${DD_SITE:-datadoghq.com}
+      DD_HOSTNAME: ${STATION_ID:-intelfactor-station}
+      DD_APM_ENABLED: "true"
+      DD_DOGSTATSD_NON_LOCAL_TRAFFIC: "true"
+      DD_LOGS_ENABLED: "true"
+      DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL: "true"
+      DD_PROCESS_AGENT_ENABLED: "true"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc/:/host/proc/:ro
+      - /sys/fs/cgroup/:/host/sys/fs/cgroup/:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/datadog:/var/run/datadog
+    ports:
+      - "8125:8125/udp"
+      - "8126:8126/tcp"

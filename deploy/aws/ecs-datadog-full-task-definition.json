@@ -1,0 +1,143 @@
+{
+  "family": "intelfactor-datadog-agent-full",
+  "taskRoleArn": "arn:aws:iam::<AWS_ACCOUNT_ID>:role/IntelFactorECSAgentTaskRole",
+  "executionRoleArn": "arn:aws:iam::<AWS_ACCOUNT_ID>:role/IntelFactorECSAgentExecutionRole",
+  "networkMode": "bridge",
+  "requiresCompatibilities": ["EC2"],
+  "containerDefinitions": [
+    {
+      "name": "datadog-agent",
+      "image": "public.ecr.aws/datadog/agent:latest",
+      "cpu": 200,
+      "memory": 1024,
+      "essential": true,
+      "mountPoints": [
+        {
+          "containerPath": "/var/run/docker.sock",
+          "sourceVolume": "docker_sock",
+          "readOnly": true
+        },
+        {
+          "containerPath": "/host/sys/fs/cgroup",
+          "sourceVolume": "cgroup",
+          "readOnly": true
+        },
+        {
+          "containerPath": "/host/proc",
+          "sourceVolume": "proc",
+          "readOnly": true
+        },
+        {
+          "containerPath": "/var/run/datadog",
+          "sourceVolume": "dd_sockets",
+          "readOnly": false
+        },
+        {
+          "containerPath": "/opt/datadog-agent/run",
+          "sourceVolume": "pointdir",
+          "readOnly": false
+        },
+        {
+          "containerPath": "/var/lib/docker/containers",
+          "sourceVolume": "containers_root",
+          "readOnly": true
+        }
+      ],
+      "portMappings": [
+        {
+          "hostPort": 8125,
+          "protocol": "udp",
+          "containerPort": 8125
+        },
+        {
+          "hostPort": 8126,
+          "protocol": "tcp",
+          "containerPort": 8126
+        }
+      ],
+      "environment": [
+        {
+          "name": "DD_API_KEY",
+          "value": "<YOUR_DATADOG_API_KEY>"
+        },
+        {
+          "name": "DD_SITE",
+          "value": "datadoghq.com"
+        },
+        {
+          "name": "DD_ECS_TASK_COLLECTION_ENABLED",
+          "value": "true"
+        },
+        {
+          "name": "DD_APM_ENABLED",
+          "value": "true"
+        },
+        {
+          "name": "DD_DOGSTATSD_NON_LOCAL_TRAFFIC",
+          "value": "true"
+        },
+        {
+          "name": "DD_LOGS_ENABLED",
+          "value": "true"
+        },
+        {
+          "name": "DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL",
+          "value": "true"
+        },
+        {
+          "name": "DD_PROCESS_AGENT_ENABLED",
+          "value": "true"
+        },
+        {
+          "name": "DD_TAGS",
+          "value": "env:production,project:intelfactor,service:datadog-agent"
+        }
+      ],
+      "healthCheck": {
+        "retries": 3,
+        "command": ["CMD-SHELL", "agent health"],
+        "timeout": 5,
+        "interval": 30,
+        "startPeriod": 15
+      }
+    }
+  ],
+  "volumes": [
+    {
+      "host": {
+        "sourcePath": "/var/run/docker.sock"
+      },
+      "name": "docker_sock"
+    },
+    {
+      "host": {
+        "sourcePath": "/proc/"
+      },
+      "name": "proc"
+    },
+    {
+      "host": {
+        "sourcePath": "/sys/fs/cgroup/"
+      },
+      "name": "cgroup"
+    },
+    {
+      "host": {
+        "sourcePath": "/var/run/datadog"
+      },
+      "name": "dd_sockets"
+    },
+    {
+      "host": {
+        "sourcePath": "/opt/datadog-agent/run"
+      },
+      "name": "pointdir"
+    },
+    {
+      "host": {
+        "sourcePath": "/var/lib/docker/containers/"
+      },
+      "name": "containers_root"
+    }
+  ]
+}
