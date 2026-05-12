@@ -209,7 +209,11 @@ def create_app(
         }
 
     def _maintenance_verdict_to_dict(verdict: Any) -> dict[str, Any]:
-        status = verdict.verdict.value if hasattr(verdict.verdict, "value") else verdict.verdict
+        status = (
+            verdict.verdict.value
+            if hasattr(verdict.verdict, "value")
+            else verdict.verdict
+        )
         return {
             "verdict_id": verdict.verdict_id,
             "timestamp": _json_datetime(verdict.timestamp),
@@ -224,7 +228,11 @@ def create_app(
         }
 
     def _maintenance_action_to_dict(action: Any) -> dict[str, Any]:
-        action_type = action.action_type.value if hasattr(action.action_type, "value") else action.action_type
+        action_type = (
+            action.action_type.value
+            if hasattr(action.action_type, "value")
+            else action.action_type
+        )
         return {
             "action_id": action.action_id,
             "timestamp": _json_datetime(action.timestamp),
@@ -242,14 +250,20 @@ def create_app(
         }
 
     def _health_score(verdict: Any) -> float:
-        status = verdict.verdict.value if hasattr(verdict.verdict, "value") else verdict.verdict
+        status = (
+            verdict.verdict.value
+            if hasattr(verdict.verdict, "value")
+            else verdict.verdict
+        )
         if status == "HEALTHY":
             return 100.0
         if status == "WARNING":
             return max(50.0, round(100.0 - verdict.z_score * 15.0, 1))
         return max(0.0, round(100.0 - verdict.z_score * 20.0, 1))
 
-    def _build_sensor_reading(data: dict[str, Any]) -> tuple[Any | None, tuple[Any, int] | None]:
+    def _build_sensor_reading(
+        data: dict[str, Any],
+    ) -> tuple[Any | None, tuple[Any, int] | None]:
         from packages.ingestion.schemas import SensorReading
 
         missing = [
@@ -258,7 +272,10 @@ def create_app(
             if field not in data
         ]
         if missing:
-            return None, (jsonify({"error": f"Missing required field: {missing[0]}"}), 400)
+            return None, (
+                jsonify({"error": f"Missing required field: {missing[0]}"}),
+                400,
+            )
         if not isinstance(data.get("raw_values"), dict):
             return None, (jsonify({"error": "raw_values must be an object"}), 400)
         try:
@@ -270,7 +287,9 @@ def create_app(
         parsed_timestamp = None
         if timestamp:
             try:
-                parsed_timestamp = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
+                parsed_timestamp = datetime.fromisoformat(
+                    str(timestamp).replace("Z", "+00:00")
+                )
                 if parsed_timestamp.tzinfo is not None:
                     parsed_timestamp = parsed_timestamp.replace(tzinfo=None)
             except ValueError:
@@ -382,7 +401,9 @@ def create_app(
             event.machine_id,
             event.sensor_type.value,
         )
-        return jsonify({"status": "accepted", "event": _sensor_event_to_dict(event)}), 202
+        return jsonify(
+            {"status": "accepted", "event": _sensor_event_to_dict(event)}
+        ), 202
 
     @app.route("/api/maintenance/sensor-events/batch", methods=["POST"])
     def maintenance_sensor_event_batch():
@@ -714,11 +735,7 @@ def create_app(
         evidence_store = get_evidence_store()
         entries = evidence_store.list_by_date(date)
         if _workspace_id:
-            entries = [
-                e
-                for e in entries
-                if _metadata_workspace(e) == _workspace_id
-            ]
+            entries = [e for e in entries if _metadata_workspace(e) == _workspace_id]
         return jsonify({"date": date, "entries": entries, "count": len(entries)})
 
     # Legacy evidence endpoint (compatibility)

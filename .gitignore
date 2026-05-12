@@ -72,3 +72,7 @@ venv/
 
 # Training artifacts
 training/datasets/raw/
+
+
+#Ignore cursor AI rules
+.cursor/rules/codacy.mdc
